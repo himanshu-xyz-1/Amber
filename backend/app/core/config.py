@@ -1,0 +1,70 @@
+"""
+Amber Core Configuration Module.
+Loads, validates, and exposes strongly-typed environment variables via Pydantic Settings.
+"""
+
+from functools import lru_cache
+from typing import List, Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    # 1. Project Info & Runtime Environment
+    APP_NAME: str = "Amber"
+    ENVIRONMENT: str = "development"
+    DEBUG: bool = True
+    API_V1_PREFIX: str = "/api/v1"
+
+    # 2. Server & Networking
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+
+    # 3. Primary Database & Vector Store
+    # Development: SQLite (aiosqlite) | Production: PostgreSQL (asyncpg) + pgvector
+    DATABASE_URL: str = "sqlite+aiosqlite:///./amber.db"
+
+    # 4. Ephemeral State, Streaming & Distributed Caching (Redis)
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_ENABLED: bool = False
+
+    # 5. Security & Authentication (JWT + Password Hashing)
+    JWT_SECRET_KEY: str = "change_me_to_a_random_super_secret_key_in_production"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # 6. LLM & Intelligence Provider Keys
+    OPENAI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+
+    # 7. Telemetry & Observability (Langfuse)
+    LANGFUSE_PUBLIC_KEY: Optional[str] = None
+    LANGFUSE_SECRET_KEY: Optional[str] = None
+    LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+    LANGFUSE_ENABLED: bool = False
+
+    # 8. Integrations & Notifications
+    SLACK_WEBHOOK_URL: Optional[str] = None
+
+    # 9. Monetization & Billing (Stripe)
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Returns a cached singleton instance of the application settings."""
+    return Settings()
+
+
+settings: Settings = get_settings()
