@@ -34,6 +34,8 @@ class ApprovalResponse(BaseModel):
     status: ApprovalStatus
     payload_sha256: Optional[str] = None
     approval_expires_at: Optional[datetime] = None
+    execution_result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
     health_check_passed: Optional[bool] = None
     created_at: datetime
     approved_at: Optional[datetime] = None

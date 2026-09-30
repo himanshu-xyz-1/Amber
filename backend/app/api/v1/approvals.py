@@ -7,6 +7,7 @@ from sqlalchemy.future import select
 from backend.app.core.database import get_db
 from backend.app.models.tool_invocation import ToolInvocation, InvocationStatus
 from backend.app.schemas.approval import ApprovalRequest, ApprovalResponse
+from backend.app.tools.base import tool_registry
 
 router = APIRouter(prefix="/approvals", tags=["Approvals"])
 
@@ -40,6 +41,27 @@ async def submit_approval(request: ApprovalRequest, db: AsyncSession = Depends(g
         invocation.status = InvocationStatus.APPROVED
         invocation.approved_by_id = request.approved_by_id
         invocation.approved_at = now_utc
+
+        # Execute the approved tool
+        tool = tool_registry.get(invocation.tool_name)
+        if tool:
+            invocation.status = InvocationStatus.EXECUTING
+            try:
+                tool_res = await tool.execute(**(invocation.tool_args or {}))
+                invocation.execution_result = tool_res.data
+                invocation.health_check_passed = tool_res.success
+                invocation.executed_at = datetime.now(timezone.utc)
+                invocation.status = InvocationStatus.EXECUTED if tool_res.success else InvocationStatus.FAILED
+                if not tool_res.success:
+                    invocation.error_message = tool_res.error
+            except Exception as e:
+                invocation.status = InvocationStatus.FAILED
+                invocation.error_message = str(e)
+                invocation.executed_at = datetime.now(timezone.utc)
+        else:
+            invocation.status = InvocationStatus.FAILED
+            invocation.error_message = f"Tool '{invocation.tool_name}' not found in registry"
+
     elif request.action == "reject":
         invocation.status = InvocationStatus.REJECTED
     else:
