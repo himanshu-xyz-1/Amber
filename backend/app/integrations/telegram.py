@@ -69,13 +69,17 @@ async def send_telegram_incident_alert(
             f"• <b>Token Hash:</b> <code>{sha256}...</code> (10m TTL)",
         ])
 
+        # Telegram strictly requires https:// scheme for inline button URLs
+        safe_url = dashboard_url if dashboard_url.startswith("https://") else "https://github.com/himanshu-xyz-1/Amber-Backend-under-development"
+        
         inline_keyboard.append([
-            {"text": "✅ 1-Click Approve", "url": f"{dashboard_url}?incident={incident_id}&action=approve&token={approval_id}"},
-            {"text": "📊 Deep Proof", "url": f"{dashboard_url}?incident={incident_id}"}
+            {"text": "✅ 1-Click Approve (Web)", "url": f"{safe_url}?incident={incident_id}&action=approve&token={approval_id}"},
+            {"text": "📊 Deep Proof", "url": f"{safe_url}?incident={incident_id}"}
         ])
     else:
+        safe_url = dashboard_url if dashboard_url.startswith("https://") else "https://github.com/himanshu-xyz-1/Amber-Backend-under-development"
         inline_keyboard.append([
-            {"text": "📊 View Dashboard", "url": f"{dashboard_url}?incident={incident_id}"}
+            {"text": "📊 View Dashboard", "url": f"{safe_url}?incident={incident_id}"}
         ])
 
     text_body = "\n".join(msg_lines)
