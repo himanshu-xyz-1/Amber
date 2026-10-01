@@ -47,6 +47,8 @@ class Settings(BaseSettings):
 
     # 8. Integrations & Notifications
     SLACK_WEBHOOK_URL: Optional[str] = None
+    GMAIL_USER: str = "amber.incident@gmail.com"
+    GMAIL_APP_PASSWORD: Optional[str] = None
 
     # 9. Monetization & Billing (Stripe)
     STRIPE_SECRET_KEY: Optional[str] = None

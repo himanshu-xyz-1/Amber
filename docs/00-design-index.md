@@ -19,14 +19,16 @@ Start with the PRD, then follow the numbered sequence. Each document is self-con
 | — | [PRD.md](./PRD.md) | Product Requirements — problem statement, use cases, functional requirements, NFRs, safety specification, rollout phases |
 | 01 | [System Architecture](./01-system-architecture.md) | Overall system topology, service decomposition, data flow, communication patterns, deployment topology, technology decisions, failure modes, security boundaries |
 | 02 | [Database Design](./02-database-design.md) | PostgreSQL + pgvector + Redis selection rationale, full schema design with ER diagram, indexing strategy, connection pooling, migrations, Redis key patterns, backup & DR, data retention |
-| 03 | [Authentication System](./03-authentication-system.md) | JWT + Redis revocation architecture, token lifecycle (access/refresh/HITL), password security, RBAC model & permission matrix, API key auth, security headers, auth threat model |
-| 04 | [Login System](./04-login-system.md) | User registration flow, login/logout flows, password reset, token refresh rotation, MFA roadmap, brute-force protection, session management, SSO enterprise path |
+| 03 | [Security & Token Architecture](./03-security-and-token-architecture.md) | Zero-trust token model, inbound webhook HMAC-SHA256 verification, single-use HITL tokens (SHA-256 bound, 10m TTL), RBAC & service IAM, threat model |
+| 04 | [HITL Permission & Verification](./04-hitl-permission-system.md) | Human-in-the-loop omni-channel dispatch (Slack/WhatsApp/Telegram), 1-click mobile approvals, automated health verification probes, instant auto-rollback |
 | 05 | [Rate Limiter](./05-rate-limiter.md) | Algorithm selection (sliding window + token bucket), 3-layer rate limiting, Redis implementation design, rate limit tiers, webhook ingestion control, LLM API rate management, DDoS protection |
 | 06 | [Scalability](./06-scalability.md) | Horizontal scaling strategy, auto-scaling triggers, bottleneck analysis, LLM API scaling & fallback chains, capacity planning (10/100/1000 incidents/day), caching, cost optimization |
 | 07 | [Version Control](./07-version-control.md) | Monorepo strategy, trunk-based development, commit conventions, PR process, protected branches, CODEOWNERS, release management, environment mapping |
 | 08 | [CI/CD Pipeline](./08-cicd-pipeline.md) | GitHub Actions pipeline, CI stages (lint/test/scan/build), CD stages (Docker/staging/production), Docker strategy, secret management, database migrations in deploy, rollback strategy |
 | 09 | [API Management](./09-api-management.md) | API versioning (/api/v1), full endpoint map, request/response standards, cursor-based pagination, webhook security, OpenAPI spec, API gateway considerations, SDK roadmap |
 | 10 | [Future Growth](./10-future-growth.md) | Product roadmap phases, multi-tenancy migration path, Kubernetes migration, observability stack, billing/monetization, plugin architecture, SOC 2 compliance, team scaling |
+| 11 | [Privacy Policy & Data](./11-privacy-policy.md) | Data collection boundaries, zero-training guarantee, in-memory PII/secret scrubbing, LLM isolation, data residency, retention & GDPR purge |
+| 12 | [Terms of Service & Security](./12-terms-of-service.md) | Subscription tiers (Observer, Autopilot, Partner) & usage limits, zero-hallucination safe execution guarantee, emergency kill-switch, SLA & liability |
 
 ---
 
@@ -39,7 +41,7 @@ Start with the PRD, then follow the numbered sequence. Each document is self-con
 | Primary Database | PostgreSQL | [02 Database](./02-database-design.md) |
 | Vector Store | pgvector (PG extension) | [02 Database](./02-database-design.md) |
 | Event Queue / Cache | Redis Streams | [02 Database](./02-database-design.md) |
-| Auth | JWT (PyJWT) + bcrypt + Redis jti | [03 Auth](./03-authentication-system.md) |
+| Security & HITL | HMAC-SHA256 + Cryptographic Action Tokens | [03 Security](./03-security-and-token-architecture.md) |
 | Rate Limiting | Redis sliding window + token bucket | [05 Rate Limiter](./05-rate-limiter.md) |
 | CI/CD | GitHub Actions | [08 CI/CD](./08-cicd-pipeline.md) |
 | Containers | Docker (multi-stage) | [08 CI/CD](./08-cicd-pipeline.md) |
