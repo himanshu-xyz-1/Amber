@@ -10,22 +10,26 @@ from backend.app.integrations.dispatcher import dispatch_incident_notifications
 @pytest.mark.asyncio
 async def test_slack_notification_graceful_skip_when_unconfigured():
     # When SLACK_WEBHOOK_URL is None, should return False gracefully
-    result = await send_slack_incident_alert({"title": "Test Alert", "severity": "P1"})
-    assert result is False
+    with patch("backend.app.integrations.slack.settings.SLACK_WEBHOOK_URL", None):
+        result = await send_slack_incident_alert({"title": "Test Alert", "severity": "P1"})
+        assert result is False
 
 
 @pytest.mark.asyncio
 async def test_telegram_notification_graceful_skip_when_unconfigured():
     # When TELEGRAM_BOT_TOKEN is None, should return False gracefully
-    result = await send_telegram_incident_alert({"title": "Test Alert", "severity": "P1"})
-    assert result is False
+    with patch("backend.app.integrations.telegram.settings.TELEGRAM_BOT_TOKEN", None):
+        result = await send_telegram_incident_alert({"title": "Test Alert", "severity": "P1"})
+        assert result is False
 
 
 @pytest.mark.asyncio
 async def test_whatsapp_notification_graceful_skip_when_unconfigured():
-    # When Twilio credentials are None, should return False gracefully
-    result = await send_whatsapp_incident_alert({"title": "Test Alert", "severity": "P1"})
-    assert result is False
+    # When Twilio/Bridge credentials are None, should return False gracefully
+    with patch("backend.app.integrations.whatsapp.settings.WHATSAPP_BRIDGE_URL", None), \
+         patch("backend.app.integrations.whatsapp.settings.TWILIO_ACCOUNT_SID", None):
+        result = await send_whatsapp_incident_alert({"title": "Test Alert", "severity": "P1"})
+        assert result is False
 
 
 @pytest.mark.asyncio
