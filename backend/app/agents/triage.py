@@ -19,6 +19,78 @@ def _get_gemini_client():
     return None
 
 
+def _classify_heuristic(title: str, message: str, service: str) -> tuple[str, str]:
+    """
+    Deterministic rule-based SRE heuristic classifier used when LLM is unavailable,
+    rate-limited (HTTP 429), or when sub-millisecond triage is required.
+    """
+    text = f"{title} {message} {service}".lower()
+
+    # P4: Informational / Advance Warnings / Notices
+    if any(k in text for k in [
+        "cert renewal",
+        "certificate renewal",
+        "ssl certificate",
+        "days remaining",
+        "informational",
+        "notice:"
+    ]):
+        return "P4", "Heuristic match: Advance lifecycle / maintenance notification (P4 informational)."
+
+    # P3: Non-customer facing batch / background cron / backup failures
+    if any(k in text for k in [
+        "cron job",
+        "nightly backup",
+        "backup-worker",
+        "batch job",
+        "s3 upload failed",
+        "etl"
+    ]):
+        return "P3", "Heuristic match: Non-customer-facing background batch/cron failure (P3 minor)."
+
+    # P0: Total service stoppage / Database connection exhaustion / Zero transaction commits
+    if any(k in text for k in [
+        "zero transaction commits",
+        "advisory lock exhaustion",
+        "connection pool saturation",
+        "pool saturation (9",
+        "pool saturation (100",
+        "primary db down",
+        "database down",
+        "split brain"
+    ]):
+        return "P0", "Heuristic match: Critical database lock/starvation causing total transaction failure (P0 critical)."
+
+    # P1: Core flow degradation / Container CrashLoop / Node failure / 504 Cascades
+    if any(k in text for k in [
+        "oomkilled",
+        "crashloopbackoff",
+        "504 gateway timeout",
+        "gateway timeout cascade",
+        "diskpressure",
+        "node diskpressure",
+        "eviction alert",
+        "node not ready",
+        "payment failure rate"
+    ]):
+        return "P1", "Heuristic match: Core customer-facing service failure or node pressure (P1 major)."
+
+    # P2: Performance degradation / Replication lag / Kafka consumer lag / Memory fragmentation
+    if any(k in text for k in [
+        "replication lag",
+        "consumer group lag",
+        "fragmentation ratio",
+        "cache-cluster",
+        "kafka-cluster",
+        "degraded performance",
+        "elevated error"
+    ]):
+        return "P2", "Heuristic match: Non-blocking performance degradation or queue/cache lag (P2 moderate)."
+
+    # Default fallback
+    return "P2", "Heuristic fallback: Standard operational alert assigned default P2."
+
+
 async def triage_node(state: AmberGraphState) -> dict:
     """
     Triage node for incident severity classification.
@@ -77,20 +149,9 @@ Return your answer strictly in this valid JSON format with no markdown wrappers:
             service = parsed.get("affected_service", service)
         except Exception as e:
             logger.warning(f"Gemini triage call failed, falling back to heuristics: {e}")
-            # Heuristic fallback if API error
-            combined = f"{title} {message}".lower()
-            if any(k in combined for k in ["critical", "connection pool", "crash", "oom", "exhausted"]):
-                severity = "P0"
-                reasoning = "Heuristic match: critical infrastructure starvation detected."
-            elif any(k in combined for k in ["error", "timeout", "degraded"]):
-                severity = "P1"
-                reasoning = "Heuristic match: service error/timeout detected."
+            severity, reasoning = _classify_heuristic(title, message, service)
     else:
-        # Fast heuristic fallback if no API key
-        combined = f"{title} {message}".lower()
-        if any(k in combined for k in ["critical", "connection pool", "crash", "oom", "exhausted"]):
-            severity = "P0"
-            reasoning = "Heuristic match: critical infrastructure starvation detected."
+        severity, reasoning = _classify_heuristic(title, message, service)
 
     elapsed_time = time.time() - start_time
     logger.info(f"Triage completed in {elapsed_time:.3f}s: {severity} ({reasoning})")

@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amber-backend
+  namespace: amber-sre
+  labels:
+    app: amber-backend
+    tier: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: amber-backend
+  template:
+    metadata:
+      labels:
+        app: amber-backend
+    spec:
+      containers:
+        - name: amber-api
+          image: ghcr.io/himanshu-xyz-1/amber-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: ENVIRONMENT
+              value: "production"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8000"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: amber-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: amber-secrets
+                  key: redis-url
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: amber-secrets
+                  key: gemini-api-key
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health/liveness
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health/readiness
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: amber-backend-svc
+  namespace: amber-sre
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    app: amber-backend

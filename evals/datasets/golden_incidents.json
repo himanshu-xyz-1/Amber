@@ -1,0 +1,102 @@
+[
+  {
+    "id": "inc-01",
+    "title": "Postgres Connection Pool Saturation (98%)",
+    "message": "Active connections reached 98/100 on payment-db-prod. Gateway timeouts rising.",
+    "service": "payment-db-prod",
+    "source": "pagerduty",
+    "expected_severity": "P0",
+    "expected_root_cause_type": "database_locks",
+    "expected_tool": "kill_db_connections"
+  },
+  {
+    "id": "inc-02",
+    "title": "Pod CrashLoopBackOff: checkout-svc OOMKilled",
+    "message": "Container checkout-svc exited with code 137 (OOMKilled). Memory limit 512Mi exceeded.",
+    "service": "checkout-svc",
+    "source": "datadog",
+    "expected_severity": "P1",
+    "expected_root_cause_type": "container_oom",
+    "expected_tool": "rollback_deployment"
+  },
+  {
+    "id": "inc-03",
+    "title": "HTTP 504 Gateway Timeout Cascade on /v1/checkout",
+    "message": "p99 latency spiked to 8,420ms on api-gateway. Error rate 12%.",
+    "service": "api-gateway",
+    "source": "sentry",
+    "expected_severity": "P1",
+    "expected_root_cause_type": "high_latency",
+    "expected_tool": "check_service_health"
+  },
+  {
+    "id": "inc-04",
+    "title": "Database Read Replica Replication Lag Exceeded",
+    "message": "Replica lag reached 420 seconds on replica-02. Read queries stale.",
+    "service": "postgres-replica",
+    "source": "cloudwatch",
+    "expected_severity": "P2",
+    "expected_root_cause_type": "replication_lag",
+    "expected_tool": "query_db_metrics"
+  },
+  {
+    "id": "inc-05",
+    "title": "Cron Job Nightly Backup S3 Upload Failed",
+    "message": "Backup container exited with code 1. S3 bucket connection timeout.",
+    "service": "backup-worker",
+    "source": "generic",
+    "expected_severity": "P3",
+    "expected_root_cause_type": "batch_job_failure",
+    "expected_tool": "fetch_pod_logs"
+  },
+  {
+    "id": "inc-06",
+    "title": "SSL Certificate Renewal Notice: 14 Days Remaining",
+    "message": "Let's Encrypt wildcard certificate will expire in 14 days on *.amber.internal.",
+    "service": "cert-manager",
+    "source": "prometheus",
+    "expected_severity": "P4",
+    "expected_root_cause_type": "informational_cert",
+    "expected_tool": "check_service_health"
+  },
+  {
+    "id": "inc-07",
+    "title": "Redis Memory Fragmentation Ratio Spike (>3.5)",
+    "message": "Redis memory fragmentation ratio reached 3.8. Evictions active.",
+    "service": "cache-cluster",
+    "source": "datadog",
+    "expected_severity": "P2",
+    "expected_root_cause_type": "memory_fragmentation",
+    "expected_tool": "check_service_health"
+  },
+  {
+    "id": "inc-08",
+    "title": "Production Kubernetes Node DiskPressure Eviction Alert",
+    "message": "Node ip-10-0-4-12 disk utilization reached 96%. Ephemeral storage evicted.",
+    "service": "k8s-node",
+    "source": "pagerduty",
+    "expected_severity": "P1",
+    "expected_root_cause_type": "disk_pressure",
+    "expected_tool": "fetch_pod_logs"
+  },
+  {
+    "id": "inc-09",
+    "title": "Advisory Lock Exhaustion on Account Ledger",
+    "message": "14 hanging advisory locks detected on payment_ledger. Zero transaction commits.",
+    "service": "ledger-db",
+    "source": "pagerduty",
+    "expected_severity": "P0",
+    "expected_root_cause_type": "database_locks",
+    "expected_tool": "kill_db_connections"
+  },
+  {
+    "id": "inc-10",
+    "title": "Kafka Consumer Group Lag Exceeded Threshold (50,000 msgs)",
+    "message": "Consumer group 'analytics-worker' lag grew to 52,400 messages.",
+    "service": "kafka-cluster",
+    "source": "datadog",
+    "expected_severity": "P2",
+    "expected_root_cause_type": "consumer_lag",
+    "expected_tool": "check_service_health"
+  }
+]
