@@ -47,6 +47,13 @@ class Settings(BaseSettings):
 
     # 8. Integrations & Notifications
     SLACK_WEBHOOK_URL: Optional[str] = None
+    TELEGRAM_BOT_TOKEN: Optional[str] = None
+    TELEGRAM_CHAT_ID: Optional[str] = None
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_WHATSAPP_FROM: Optional[str] = None  # e.g., "whatsapp:+14155238886"
+    WHATSAPP_ALERT_TO: Optional[str] = None     # e.g., "whatsapp:+919876543210"
+    DASHBOARD_URL: str = "http://localhost:3000"
     GMAIL_USER: str = "amber.incident@gmail.com"
     GMAIL_APP_PASSWORD: Optional[str] = None
 

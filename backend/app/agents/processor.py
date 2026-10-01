@@ -126,5 +126,27 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
             await session.commit()
             logger.info(f"Autonomous incident pipeline completed for Incident {incident.id} with status {incident.status.value}")
 
+            # 6. Multi-Channel On-Call Alert Broadcast (Slack, Telegram, WhatsApp)
+            from backend.app.integrations import dispatch_incident_notifications
+            inc_dict = {
+                "id": str(incident.id),
+                "title": incident.title,
+                "severity": incident.severity.value,
+                "status": incident.status.value,
+                "service": incident.source_service,
+                "root_cause_summary": incident.root_cause_summary,
+                "timestamp": start_time.timestamp()
+            }
+            primary_inv = None
+            if proposed_tools and 'tool_inv' in locals():
+                primary_inv = {
+                    "id": str(tool_inv.id),
+                    "tool_name": tool_inv.tool_name,
+                    "tool_args": tool_inv.tool_args,
+                    "payload_sha256": tool_inv.payload_sha256,
+                    "risk_level": tool_inv.risk_level.value
+                }
+            asyncio.create_task(dispatch_incident_notifications(inc_dict, primary_inv))
+
     except Exception as e:
         logger.exception(f"Error in autonomous incident processing pipeline: {e}")
