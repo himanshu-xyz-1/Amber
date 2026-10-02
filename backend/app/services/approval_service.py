@@ -50,17 +50,13 @@ async def execute_tool_approval(
     if not invocation:
         raise ApprovalExecutionError(f"Tool invocation '{tool_invocation_id}' not found.", status_code=404)
 
-    if invocation.status == InvocationStatus.EXECUTED:
-        logger.info(f"Tool invocation '{tool_invocation_id}' was already executed; returning cached execution.")
-        return invocation
-
-    if invocation.status == InvocationStatus.EXECUTING:
-        logger.info(f"Tool invocation '{tool_invocation_id}' is already executing in background.")
+    if invocation.status in [InvocationStatus.EXECUTED, InvocationStatus.EXECUTING, InvocationStatus.APPROVED]:
+        logger.info(f"Tool invocation '{tool_invocation_id}' is already approved/executed ({invocation.status.value}); returning cached execution.")
         return invocation
 
     if invocation.status != InvocationStatus.PENDING_APPROVAL:
         raise ApprovalExecutionError(
-            f"Invocation is already in {invocation.status.value} status.",
+            f"Invocation cannot be approved: current status is {invocation.status.value}.",
             status_code=400
         )
 
@@ -122,28 +118,27 @@ async def execute_tool_approval(
                 if invocation.status == InvocationStatus.EXECUTED:
                     incident.status = IncidentStatus.RESOLVED
                     incident.resolved_at = datetime.now(timezone.utc)
-                    # Notify target application / DubPilot of real-time remediation
+                    # Notify target application if an external callback webhook was provided in the alert payload
                     try:
-                        import httpx
-                        target_urls = [
-                            "http://127.0.0.1:8080/api/sre/remediate",
-                            "http://host.docker.internal:8080/api/sre/remediate",
-                        ]
-                        async with httpx.AsyncClient(timeout=3.0) as client:
-                            for t_url in target_urls:
-                                try:
-                                    await client.post(
-                                        t_url,
-                                        json={
-                                            "incident_id": str(incident.id),
-                                            "tool_name": invocation.tool_name,
-                                            "result": invocation.execution_result,
-                                            "approver": approver_label
-                                        }
-                                    )
-                                    break
-                                except Exception:
-                                    pass
+                        raw_payload = {}
+                        if incident.description:
+                            try:
+                                raw_payload = json.loads(incident.description)
+                            except Exception:
+                                pass
+                        callback_url = raw_payload.get("target_service_url") or raw_payload.get("raw_payload", {}).get("target_service_url")
+                        if callback_url:
+                            import httpx
+                            async with httpx.AsyncClient(timeout=3.0) as client:
+                                await client.post(
+                                    callback_url,
+                                    json={
+                                        "incident_id": str(incident.id),
+                                        "tool_name": invocation.tool_name,
+                                        "result": invocation.execution_result,
+                                        "approver": approver_label
+                                    }
+                                )
                     except Exception:
                         pass
                 elif invocation.status == InvocationStatus.FAILED:

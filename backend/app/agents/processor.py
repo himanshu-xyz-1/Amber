@@ -12,6 +12,7 @@ from backend.app.models.incident import Incident, IncidentSeverity, IncidentStat
 from backend.app.models.alert import Alert
 from backend.app.models.tool_invocation import ToolInvocation, RiskLevel, InvocationStatus
 from backend.app.agents.graph import run_incident_graph
+from backend.app.tools.base import tool_registry
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
     3. Tool Invocation Creation (HITL approval token with SHA-256 binding & 10m TTL)
     """
     start_time = datetime.now(timezone.utc)
+    print(f"🚀 [AMBER SRE] Processing Alert {alert_id} from {source} into autonomous incident pipeline...", flush=True)
     logger.info(f"Starting autonomous pipeline for Alert {alert_id} from {source}")
 
     try:
@@ -175,6 +177,8 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
                     "status": target_inv.status.value
                 }
             await dispatch_incident_notifications(inc_dict, primary_inv)
+            print(f"📡 [AMBER SRE] Incident {incident.id} [{incident.severity.value}] notification dispatch completed. Status: {incident.status.value}", flush=True)
 
     except Exception as e:
+        print(f"❌ [AMBER SRE] Autonomous pipeline error: {e}", flush=True)
         logger.exception(f"Error in autonomous incident processing pipeline: {e}")

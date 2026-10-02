@@ -92,7 +92,7 @@ Rules:
 """
         try:
             res = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.8-flash",
                 contents=prompt
             )
             raw_text = res.text.strip()
@@ -122,15 +122,59 @@ Rules:
 
     # Deterministic fallback if LLM was unavailable or returned empty proposal
     if not proposed_tools:
-        if severity in ["P0", "P1"]:
+        alert_payload = state.get("alert_payload", {})
+        raw_inner = alert_payload.get("raw_payload", {}) if isinstance(alert_payload.get("raw_payload"), dict) else {}
+        suggested_tool_name = alert_payload.get("proposed_tool") or raw_inner.get("proposed_tool")
+        alert_title = alert_payload.get("title") or raw_inner.get("alertname") or "Infrastructure Incident"
+        alert_desc = alert_payload.get("description") or raw_inner.get("description") or "Elevated anomaly detected."
+
+        matched_tool = tool_registry.get(suggested_tool_name) if suggested_tool_name else None
+
+        if matched_tool:
+            # Map appropriate arguments for the suggested tool
+            if matched_tool.name == "kill_db_connections":
+                args = {"pids": [1234, 1235]}
+                root_cause = f"Database connection pool saturation on {service}: idle/stalled queries holding connection locks."
+                remediation_plan = f"Terminate blocking PIDs [1234, 1235] to recover pool capacity."
+            elif matched_tool.name == "rollback_deployment":
+                args = {"deployment_name": service, "target_revision": "v1.4.2"}
+                root_cause = f"Regression or handshake fault detected on {service} following recent deployment: {alert_desc}"
+                remediation_plan = f"Rollback deployment '{service}' to previous stable revision v1.4.2."
+            elif matched_tool.name == "restart_service_pod":
+                args = {"pod_name": f"{service}-worker-pod-0", "namespace": "production"}
+                root_cause = f"Resource starvation or threadpool stall on {service}: {alert_desc}"
+                remediation_plan = f"Restart pod '{service}-worker-pod-0' with graceful drainage."
+            else:
+                args = {}
+                root_cause = f"Operational fault on {service}: {alert_title}"
+                remediation_plan = f"Execute remediation tool '{matched_tool.name}'."
+
             proposed_tools.append({
-                "tool_name": "kill_db_connections",
-                "args": {"pids": [1234]},
-                "risk_level": "HIGH",
-                "reversible": False
+                "tool_name": matched_tool.name,
+                "args": args,
+                "risk_level": matched_tool.risk_level.value,
+                "reversible": matched_tool.reversible
             })
-            root_cause = "Critical connection starvation: idle queries blocking transaction pool."
-            remediation_plan = "Terminate blocking PID 1234 to restore connection pool capacity."
+        elif severity in ["P0", "P1"]:
+            # Default P0/P1 remediation
+            if "db" in service or "postgres" in service or "sql" in service or "starvation" in alert_title.lower():
+                proposed_tools.append({
+                    "tool_name": "kill_db_connections",
+                    "args": {"pids": [1234]},
+                    "risk_level": "HIGH",
+                    "reversible": False
+                })
+                root_cause = "Critical connection starvation: idle queries blocking transaction pool."
+                remediation_plan = "Terminate blocking PID 1234 to restore connection pool capacity."
+            else:
+                proposed_tools.append({
+                    "tool_name": "restart_service_pod",
+                    "args": {"pod_name": f"{service}-pod-0", "namespace": "production"},
+                    "risk_level": "HIGH",
+                    "reversible": True
+                })
+                root_cause = f"Critical service degradation on {service}: {alert_desc}"
+                remediation_plan = f"Cycle worker pod '{service}-pod-0' to relieve contention."
         else:
             proposed_tools.append({
                 "tool_name": "check_service_health",
@@ -138,6 +182,8 @@ Rules:
                 "risk_level": "LOW",
                 "reversible": True
             })
+            root_cause = f"Diagnostic probe indicates degraded health on {service}."
+            remediation_plan = "Run health check and monitor operational telemetry."
 
     return {
         "diagnostic_results": diagnostic_results,

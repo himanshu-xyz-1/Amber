@@ -132,6 +132,7 @@ async def send_telegram_incident_alert(
     text_body = "\n".join(msg_lines)
     api_url = f"https://api.telegram.org/bot{token}/sendMessage"
 
+    print(f"⚡ [AMBER TELEGRAM] Dispatching alert for Incident {incident_id} to {len(subscribers)} subscriber(s)...", flush=True)
     success_count = 0
     try:
         async with httpx.AsyncClient(timeout=6.0) as client:
@@ -146,13 +147,17 @@ async def send_telegram_incident_alert(
                     resp = await client.post(api_url, json=payload)
                     if resp.status_code == 200:
                         success_count += 1
+                        print(f"✅ [AMBER TELEGRAM] Alert delivered to chat_id {s_id} for Incident {incident_id}", flush=True)
                         logger.info(f"Dispatched Telegram alert for Incident {incident_id} to subscriber {s_id}")
                     else:
+                        print(f"❌ [AMBER TELEGRAM] Error sending to {s_id}: {resp.status_code} - {resp.text}", flush=True)
                         logger.warning(f"Telegram API error for subscriber {s_id}: {resp.status_code} - {resp.text}")
                 except Exception as sub_err:
+                    print(f"❌ [AMBER TELEGRAM] Delivery exception for {s_id}: {sub_err}", flush=True)
                     logger.warning(f"Failed to deliver to subscriber {s_id}: {sub_err}")
 
         return success_count > 0
     except Exception as e:
+        print(f"❌ [AMBER TELEGRAM] Top-level dispatch failure: {e}", flush=True)
         logger.warning(f"Failed to deliver Telegram alerts: {e}")
         return False
