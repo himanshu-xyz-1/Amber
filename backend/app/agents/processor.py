@@ -146,7 +146,7 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
                     "payload_sha256": tool_inv.payload_sha256,
                     "risk_level": tool_inv.risk_level.value
                 }
-            asyncio.create_task(dispatch_incident_notifications(inc_dict, primary_inv))
+            await dispatch_incident_notifications(inc_dict, primary_inv)
 
     except Exception as e:
         logger.exception(f"Error in autonomous incident processing pipeline: {e}")

@@ -38,6 +38,25 @@ services:
     networks:
       - amber-network
 
+  whatsapp-bridge:
+    build:
+      context: ./services/whatsapp-bridge
+      dockerfile: Dockerfile
+    image: amber-whatsapp-bridge:latest
+    container_name: amber-whatsapp-bridge
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - whatsapp_sessions:/app/sessions
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3001/status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - amber-network
+
   backend:
     build:
       context: .
@@ -52,10 +71,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      whatsapp-bridge:
+        condition: service_started
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-amber}:${POSTGRES_PASSWORD:-amber_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-amber_db}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_ENABLED=true
+      - WHATSAPP_BRIDGE_URL=http://whatsapp-bridge:3001
       - ENVIRONMENT=production
       - HOST=0.0.0.0
       - PORT=8000
@@ -64,9 +86,34 @@ services:
     networks:
       - amber-network
 
+  telegram-bot:
+    image: amber-backend:latest
+    container_name: amber-telegram-bot
+    restart: unless-stopped
+    command: ["python", "-m", "backend.app.integrations.telegram_bot"]
+    env_file:
+      - .env
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-amber}:${POSTGRES_PASSWORD:-amber_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-amber_db}
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_ENABLED=true
+      - ENVIRONMENT=production
+    networks:
+      - amber-network
+
 volumes:
   postgres_data:
   redis_data:
+  whatsapp_sessions:
 
 networks:
   amber-network:

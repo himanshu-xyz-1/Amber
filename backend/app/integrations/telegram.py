@@ -34,6 +34,7 @@ async def send_telegram_incident_alert(
     root_cause = incident_data.get("root_cause_summary") or "Automated investigation in progress."
     incident_id = incident_data.get("id", "N/A")
     dashboard_url = settings.DASHBOARD_URL
+    safe_url = dashboard_url if (dashboard_url and dashboard_url.startswith("https://")) else "https://github.com/himanshu-xyz-1/Amber-Backend-under-development"
 
     sev_icons = {
         "P0": "🚨 <b>[P0 CRITICAL OUTAGE]</b>",
@@ -70,14 +71,14 @@ async def send_telegram_incident_alert(
         ])
 
         # Telegram strictly requires https:// scheme for inline button URLs
-        safe_url = dashboard_url if dashboard_url.startswith("https://") else "https://github.com/himanshu-xyz-1/Amber-Backend-under-development"
-        
         inline_keyboard.append([
-            {"text": "✅ 1-Click Approve (Web)", "url": f"{safe_url}?incident={incident_id}&action=approve&token={approval_id}"},
-            {"text": "📊 Deep Proof", "url": f"{safe_url}?incident={incident_id}"}
+            {"text": "⚡ 1-Click Approve", "callback_data": f"approve:{approval_id}"},
+            {"text": "❌ Reject", "callback_data": f"reject:{approval_id}"}
+        ])
+        inline_keyboard.append([
+            {"text": "📊 Web Dashboard", "url": f"{safe_url}?incident={incident_id}"}
         ])
     else:
-        safe_url = dashboard_url if dashboard_url.startswith("https://") else "https://github.com/himanshu-xyz-1/Amber-Backend-under-development"
         inline_keyboard.append([
             {"text": "📊 View Dashboard", "url": f"{safe_url}?incident={incident_id}"}
         ])
