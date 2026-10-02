@@ -13,6 +13,7 @@ const logger = pino({ level: 'silent' });
 let sock = null;
 let isConnected = false;
 let currentQrDataUrl = null;
+const messageStore = new Map();
 
 async function startWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState('sessions');
@@ -20,7 +21,14 @@ async function startWhatsApp() {
   sock = makeWASocket({
     auth: state,
     logger,
-    printQRInTerminal: false
+    printQRInTerminal: false,
+    syncFullHistory: false,
+    getMessage: async (key) => {
+      if (messageStore.has(key.id)) {
+        return messageStore.get(key.id);
+      }
+      return { conversation: 'Amber Incident Alert' };
+    }
   });
 
   sock.ev.on('connection.update', async (update) => {
@@ -143,6 +151,23 @@ app.get('/status', (req, res) => {
   });
 });
 
+// List participating WhatsApp groups
+app.get('/groups', async (req, res) => {
+  if (!isConnected || !sock) {
+    return res.status(503).json({ error: 'WhatsApp not connected' });
+  }
+  try {
+    const groups = await sock.groupFetchAllParticipating();
+    const list = Object.values(groups).map(g => ({
+      id: g.id,
+      name: g.subject
+    }));
+    return res.json(list);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // Endpoint called by Amber Backend
 app.post('/send', async (req, res) => {
   const { to, message } = req.body;
@@ -165,9 +190,17 @@ app.post('/send', async (req, res) => {
       jid = `${cleanNumber}@s.whatsapp.net`;
     }
 
-    await sock.sendMessage(jid, { text: message });
+    try {
+      await sock.sendPresenceUpdate('composing', jid);
+    } catch (_) {}
+
+    const sentMsg = await sock.sendMessage(jid, { text: message });
+    if (sentMsg?.message) {
+      messageStore.set(sentMsg.key.id, sentMsg.message);
+    }
+
     console.log(`[ALERT DISPATCHED] WhatsApp message sent to ${jid}`);
-    return res.json({ success: true, delivered_to: jid });
+    return res.json({ success: true, delivered_to: jid, id: sentMsg?.key?.id });
   } catch (error) {
     console.error('Failed to send WhatsApp alert:', error);
     return res.status(500).json({ success: false, error: error.message });

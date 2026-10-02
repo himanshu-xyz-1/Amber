@@ -20,3 +20,8 @@ node_modules/
 .next/
 dist/
 build/
+scripts/secrets/
+*.pem
+*.key
+sessions/
+auth_info*/

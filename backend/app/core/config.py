@@ -58,10 +58,11 @@ class Settings(BaseSettings):
     GMAIL_USER: str = "amber.incident@gmail.com"
     GMAIL_APP_PASSWORD: Optional[str] = None
 
-    # 9. Monetization & Billing (Stripe)
+    # 9. Monetization, Billing & Enterprise Licensing
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_PUBLISHABLE_KEY: Optional[str] = None
     STRIPE_WEBHOOK_SECRET: Optional[str] = None
+    AMBER_LICENSE_KEY: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

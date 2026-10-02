@@ -11,12 +11,15 @@ from backend.app.api.v1.incidents import router as incident_router
 from backend.app.api.v1.approvals import router as approval_router
 from backend.app.api.v1.contact import router as contact_router
 
+from backend.app.core.license import license_manager
+
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up Amber API...")
+    license_manager.print_startup_banner()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield

@@ -22,11 +22,37 @@ async def dispatch_incident_notifications(
     Broadcasts incident alerts across all configured channels concurrently.
     Returns status map of channel deliveries.
     """
-    tasks = {
-        "slack": send_slack_incident_alert(incident_data, tool_invocation),
-        "telegram": send_telegram_incident_alert(incident_data, tool_invocation),
-        "whatsapp": send_whatsapp_incident_alert(incident_data, tool_invocation)
-    }
+    from backend.app.core.license import license_manager
+
+    # License Enforcement: Check if enterprise channels are unlocked
+    allow_slack = license_manager.is_feature_enabled("slack_approvals")
+    allow_telegram = license_manager.is_feature_enabled("telegram_bot")
+    allow_whatsapp = license_manager.is_feature_enabled("whatsapp_bridge")
+
+    if not license_manager.is_valid:
+        logger.warning(
+            "⚠️  [AMBER COMMUNITY EDITION] Multi-channel alerts locked. "
+            "Visit https://amber.dev to get your Enterprise License Key."
+        )
+
+    tasks = {}
+    if allow_slack:
+        tasks["slack"] = send_slack_incident_alert(incident_data, tool_invocation)
+    else:
+        logger.debug("Slack alerts locked: requires active Amber Enterprise license.")
+
+    if allow_telegram:
+        tasks["telegram"] = send_telegram_incident_alert(incident_data, tool_invocation)
+    else:
+        logger.debug("Telegram alerts locked: requires active Amber Enterprise license.")
+
+    if allow_whatsapp:
+        tasks["whatsapp"] = send_whatsapp_incident_alert(incident_data, tool_invocation)
+    else:
+        logger.debug("WhatsApp alerts locked: requires active Amber Enterprise license.")
+
+    if not tasks:
+        return {"slack": False, "telegram": False, "whatsapp": False}
 
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
