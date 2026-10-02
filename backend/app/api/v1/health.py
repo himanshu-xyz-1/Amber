@@ -5,6 +5,8 @@ from typing import Dict, Any
 
 from backend.app.core.database import get_db
 
+from backend.app.core.config import settings
+
 router = APIRouter(prefix="/health", tags=["Health"])
 
 @router.get("/liveness")
@@ -17,11 +19,21 @@ async def check_readiness(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
     try:
         await db.execute(text("SELECT 1"))
         db_status = "connected"
-    except Exception as e:
+    except Exception:
         db_status = "disconnected"
         raise HTTPException(status_code=503, detail={"status": "not ready", "database": db_status})
     
-    # Check redis if enabled (stubbed for now)
-    redis_status = "disabled"
+    # Check redis if enabled
+    if settings.REDIS_ENABLED:
+        try:
+            import redis.asyncio as aioredis
+            r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+            await r.ping()
+            await r.aclose()
+            redis_status = "connected"
+        except Exception:
+            redis_status = "disconnected"
+    else:
+        redis_status = "disabled"
     
     return {"status": "ready", "database": db_status, "redis": redis_status}

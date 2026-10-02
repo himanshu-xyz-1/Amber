@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: amber-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-amber}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-amber_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-amber_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-amber} -d ${POSTGRES_DB:-amber_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - amber-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: amber-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - amber-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.backend
+    image: amber-backend:latest
+    container_name: amber-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-amber}:${POSTGRES_PASSWORD:-amber_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-amber_db}
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_ENABLED=true
+      - ENVIRONMENT=production
+      - HOST=0.0.0.0
+      - PORT=8000
+    ports:
+      - "8000:8000"
+    networks:
+      - amber-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  amber-network:
+    driver: bridge
