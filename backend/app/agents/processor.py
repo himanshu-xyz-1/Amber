@@ -100,6 +100,7 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
                 t.get("risk_level") == "HIGH" for t in proposed_tools
             )
 
+            created_invs = []
             if proposed_tools:
                 for tool in proposed_tools:
                     tool_name = tool.get("tool_name", "query_db_metrics")
@@ -110,18 +111,39 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
                     payload_sha256 = compute_args_hash(tool_args)
                     approval_expires = start_time + timedelta(minutes=10)
 
+                    # For LOW risk read-only tools, execute immediately in autonomous mode
+                    exec_result = None
+                    health_passed = None
+                    exec_status = InvocationStatus.PENDING_APPROVAL if risk_level == RiskLevel.HIGH else InvocationStatus.EXECUTED
+                    
+                    if risk_level == RiskLevel.LOW:
+                        reg_tool = tool_registry.get(tool_name)
+                        if reg_tool:
+                            try:
+                                res = await reg_tool.execute(**tool_args)
+                                exec_result = res.data
+                                health_passed = res.success
+                                exec_status = InvocationStatus.EXECUTED if res.success else InvocationStatus.FAILED
+                            except Exception as ex:
+                                logger.warning(f"Autonomous tool execution error for {tool_name}: {ex}")
+                                exec_status = InvocationStatus.FAILED
+
                     tool_inv = ToolInvocation(
                         incident_id=incident.id,
                         tool_name=tool_name,
                         tool_args=tool_args,
                         risk_level=risk_level,
                         reversible=tool.get("reversible", False),
-                        status=InvocationStatus.PENDING_APPROVAL if risk_level == RiskLevel.HIGH else InvocationStatus.EXECUTING,
+                        status=exec_status,
                         payload_sha256=payload_sha256,
                         approval_expires_at=approval_expires if risk_level == RiskLevel.HIGH else None,
+                        execution_result=exec_result,
+                        health_check_passed=health_passed,
+                        executed_at=datetime.now(timezone.utc) if risk_level == RiskLevel.LOW else None,
                         created_at=start_time
                     )
                     session.add(tool_inv)
+                    created_invs.append(tool_inv)
 
                 incident.status = IncidentStatus.PROPOSED if requires_approval else IncidentStatus.EXECUTING
 
@@ -140,13 +162,17 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
                 "timestamp": start_time.timestamp()
             }
             primary_inv = None
-            if proposed_tools and 'tool_inv' in locals():
+            if created_invs:
+                # Prioritize high risk tool awaiting approval
+                pending_high = [inv for inv in created_invs if inv.status == InvocationStatus.PENDING_APPROVAL]
+                target_inv = pending_high[0] if pending_high else created_invs[0]
                 primary_inv = {
-                    "id": str(tool_inv.id),
-                    "tool_name": tool_inv.tool_name,
-                    "tool_args": tool_inv.tool_args,
-                    "payload_sha256": tool_inv.payload_sha256,
-                    "risk_level": tool_inv.risk_level.value
+                    "id": str(target_inv.id),
+                    "tool_name": target_inv.tool_name,
+                    "tool_args": target_inv.tool_args,
+                    "payload_sha256": target_inv.payload_sha256,
+                    "risk_level": target_inv.risk_level.value,
+                    "status": target_inv.status.value
                 }
             await dispatch_incident_notifications(inc_dict, primary_inv)
 

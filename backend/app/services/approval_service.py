@@ -50,6 +50,14 @@ async def execute_tool_approval(
     if not invocation:
         raise ApprovalExecutionError(f"Tool invocation '{tool_invocation_id}' not found.", status_code=404)
 
+    if invocation.status == InvocationStatus.EXECUTED:
+        logger.info(f"Tool invocation '{tool_invocation_id}' was already executed; returning cached execution.")
+        return invocation
+
+    if invocation.status == InvocationStatus.EXECUTING:
+        logger.info(f"Tool invocation '{tool_invocation_id}' is already executing in background.")
+        return invocation
+
     if invocation.status != InvocationStatus.PENDING_APPROVAL:
         raise ApprovalExecutionError(
             f"Invocation is already in {invocation.status.value} status.",

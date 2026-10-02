@@ -96,20 +96,31 @@ async def send_telegram_incident_alert(
         tool_args = str(tool_invocation.get("tool_args", {}))
         sha256 = tool_invocation.get("payload_sha256", "N/A")[:12]
         approval_id = tool_invocation.get("id", "")
+        status = tool_invocation.get("status", "PENDING_APPROVAL")
 
-        msg_lines.extend([
-            "",
-            "<b>⚡ Proposed Remediation (Approval Required):</b>",
-            f"• <b>Tool:</b> <code>{html.escape(tool_name)}</code>",
-            f"• <b>Args:</b> <code>{html.escape(tool_args)}</code>",
-            f"• <b>Token Hash:</b> <code>{sha256}...</code> (10m TTL)",
-        ])
+        if status == "PENDING_APPROVAL":
+            msg_lines.extend([
+                "",
+                "<b>⚡ Proposed Remediation (HITL Approval Required):</b>",
+                f"• <b>Tool:</b> <code>{html.escape(tool_name)}</code>",
+                f"• <b>Args:</b> <code>{html.escape(tool_args)}</code>",
+                f"• <b>Token Hash:</b> <code>{sha256}...</code> (10m TTL)",
+            ])
 
-        # Telegram strictly requires https:// scheme for inline button URLs
-        inline_keyboard.append([
-            {"text": "⚡ 1-Click Approve", "callback_data": f"approve:{approval_id}"},
-            {"text": "❌ Reject", "callback_data": f"reject:{approval_id}"}
-        ])
+            # Telegram strictly requires https:// scheme for inline button URLs
+            inline_keyboard.append([
+                {"text": "⚡ 1-Click Approve", "callback_data": f"approve:{approval_id}"},
+                {"text": "❌ Reject", "callback_data": f"reject:{approval_id}"}
+            ])
+        else:
+            msg_lines.extend([
+                "",
+                "<b>🟢 Autonomous Action Executed:</b>",
+                f"• <b>Tool:</b> <code>{html.escape(tool_name)}</code>",
+                f"• <b>Status:</b> <code>{html.escape(status)}</code>",
+                "• <b>Permission:</b> Low-risk read-only diagnostic ran autonomously.",
+            ])
+
         inline_keyboard.append([
             {"text": "📊 Web Dashboard", "url": f"{safe_url}?incident={incident_id}"}
         ])
