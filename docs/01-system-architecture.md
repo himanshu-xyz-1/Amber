@@ -2,147 +2,168 @@
 
 ## 1. System Overview
 
-Amber is an Autonomous Incident Remediation & Site Reliability Engineering (SRE) Engine designed to alleviate alert fatigue and reduce Mean Time To Resolution (MTTR) by orchestrating autonomous investigation, triage, and targeted remediation. The core thesis of Amber is **"LLM proposes, deterministic policy decides."** While Large Language Models (LLMs) drive the non-deterministic reasoning (analyzing logs, hypothesizing root causes, formulating remediation steps), all actions are gated by strict, deterministic, policy-based guardrails (via rule engines, static analysis, or Human-in-the-Loop approvals).
+Amber is an Autonomous Incident Remediation & Site Reliability Engineering (SRE) Engine designed to eliminate alert fatigue and reduce Mean Time To Resolution (MTTR) by orchestrating autonomous investigation, triage, and targeted remediation. The core thesis of Amber is **"LLM proposes, deterministic policy decides."** While Large Language Models (LLMs) drive non-deterministic reasoning (analyzing logs, hypothesizing root causes, formulating remediation steps), all mutations are gated by strict, deterministic, policy-based guardrails (via static code registries, cryptographic SHA-256 payload binding, and Human-in-the-Loop approvals).
 
-Amber acts as an intelligent overlay on top of existing observability tools, executing read-only diagnostics autonomously, and securely orchestrating remediation steps across the infrastructure.
+Amber acts as an intelligent overlay on top of existing observability tools, executing read-only diagnostics autonomously, and securely orchestrating remediation steps across the target infrastructure inside a private VPC.
+
+---
 
 ## 2. High-Level Architecture Diagram
 
 ```text
-                                +-----------------------------------+
-                                |                                   |
-                                |       AMBER FRONTEND (Next.js)    |
-                                |  Dashboards, Config, HITL Gateway |
-                                |                                   |
-                                +--------+-------------+------------+
-                                         |             | WebSocket
-                                         | REST        |
-+-------------------+           +--------v-------------v------------+       +-------------------+
-| OBSERVABILITY     | Webhooks  |                                   | Slack | NOTIFICATION      |
-| PagerDuty, Sentry,+----------->      API GATEWAY (FastAPI)        <-------> Slack/Teams Bots  |
-| Datadog, Prom.    |           |                                   |       |                   |
-+-------------------+           +------------------+----------------+       +-------------------+
+                                 +------------------------------------------------+
+                                 |                                                |
+                                 |           AMBER EDGE FRONTEND                  |
+                                 |      (React 19 + Vite + Cloudflare Workers)    |
+                                 |             https://ambersre.xyz               |
+                                 |                                                |
+                                 +--------+------------------+--------------------+
+                                          |                  | WebSocket / SSE
+                                          | REST API         |
++-------------------+           +---------v------------------v---------+       +-------------------------+
+| OBSERVABILITY     | Webhooks  |                                      |       |  OMNI-CHANNEL HITL      |
+| PagerDuty, Sentry,+----------->        amber-backend (FastAPI :8000)  <------->  ├── Slack Block Kit    |
+| Datadog, Prom.    | (<50ms)   |        REST API Gateway Layer        |       |  ├── WhatsApp QR Bridge |
++-------------------+           +------------------+-------------------+       |  └── Telegram Bot       |
+                                                   |                           +-------------------------+
+                                +------------------v-------------------+
+                                |            amber-redis               |
+                                |     (Redis 7 Alpine Event Queue)     |
+                                |      Streams, Dedup & Revocation     |
+                                +------------------+-------------------+
+                                                   | Async Stream Poll
+                                +------------------v-------------------+
+                                |       ALERT CORRELATION ENGINE       |
+                                |    (Sliding Window Fingerprinting)   |
+                                +------------------+-------------------+
+                                                   | Correlated Incident
+                                +------------------v-------------------+       +-------------------------+
+                                |      AGENT ORCHESTRATION SERVICE     |       |   amber-postgres        |
+                                |       (LangGraph State Machine)      <------->   (PostgreSQL 16 +      |
+                                |                                      |       |    pgvector & BM25)     |
+                                |   [Triage] -> [Hybrid RAG]           |       +-------------------------+
+                                |       -> [Investigation]             |
+                                |       -> [Guardrail Validator]       |
+                                +------------------+-------------------+
                                                    |
-                                +------------------v----------------+
-                                |  WEBHOOK INGESTION & EVENT QUEUE  |
-                                |          (Redis Streams)          |
-                                +------------------+----------------+
-                                                   | Async Poll
-                                +------------------v----------------+
-                                |    ALERT CORRELATION ENGINE       |
-                                | (Sliding Window Fingerprinting)   |
-                                +------------------+----------------+
+                                +------------------v-------------------+
+                                |      UNIFIED APPROVAL SERVICE        |
+                                |   (SHA-256 Hashed Payload Binding)   |
+                                |    10-Minute TTL Single-Use Gate     |
+                                +------------------+-------------------+
                                                    |
-                                +------------------v----------------+       +-------------------+
-                                |     AGENT ORCHESTRATION SERVICE   |       | RAG KNOWLEDGE BASE|
-                                |      (LangGraph State Machine)    <-------> (PostgreSQL +     |
-                                |                                   |       |  pgvector & BM25) |
-                                |  [Triage] -> [Investigation]      |       +-------------------+
-                                |       -> [Guardrail] -> [Remediate|
-                                +------------------+----------------+
+                        ┌──────────────────────────┴──────────────────────────┐
+                        │                                                     │
+                        ▼                                                     ▼
+        +-------------------------------+                     +-------------------------------+
+        |     amber-telegram-bot        |                     |     amber-whatsapp-bridge     |
+        |  (Dedicated Polling Worker)   |                     |    (Node.js Baileys :3001)    |
+        |      @ambersre_alert_bot      |                     |    Live Web QR Auth Session   |
+        +---------------+---------------+                     +---------------+---------------+
+                        │                                                     │
+                        └──────────────────────────┬──────────────────────────┘
+                                                   │
+                                +------------------v-------------------+
+                                |      TOOL EXECUTION RUNTIME          |
+                                |  LOW: Autonomous Read-only Metrics   |
+                                |  HIGH: Cryptographically Approved    |
+                                +------------------+-------------------+
                                                    |
-                                +------------------v----------------+
-                                |     TOOL EXECUTION RUNTIME &      |
-                                |        HITL APPROVAL GATEWAY      |
-                                | (SHA-256 bound execution blocks)  |
-                                +------------------+----------------+
-                                                   |
-                                +------------------v----------------+
-                                |      TARGET INFRASTRUCTURE        |
-                                |   (AWS/GCP, K8s, DBs, APIs)       |
-                                +-----------------------------------+
+                                +------------------v-------------------+
+                                |        TARGET INFRASTRUCTURE         |
+                                |    (AWS / GCP, K8s, RDS, VPC)        |
+                                +--------------------------------------+
 ```
+
+---
 
 ## 3. Service Decomposition
 
-### API Gateway Layer (FastAPI)
-The central entry point for all synchronous HTTP traffic. It handles webhook ingestion, REST API calls from the frontend, authentication (JWT + bcrypt), and rate limiting. Built with FastAPI for high performance and native async support.
+### 1. API Gateway Layer (`amber-backend` :8000)
+The central entry point for all synchronous HTTP traffic. It handles:
+- Inbound alert webhook ingestion (`/api/v1/webhooks/{source}`).
+- Incident CRUD, timeline, and query APIs (`/api/v1/incidents`).
+- Cryptographic approval verification (`/api/v1/approvals`).
+- Liveness (`/health/liveness`) and database/redis readiness probes (`/health/readiness`).
+- Commercial license verification (`/api/v1/license/activate`).
 
-### Webhook Ingestion Service
-Buffers incoming alerts rapidly to meet the <100ms p99 latency requirement. Writes raw webhook payloads directly to Redis Streams, acting as a shock absorber during alert storms.
+### 2. Event Queue & Token Revocation (`amber-redis` :6379)
+Buffers incoming alerts rapidly to meet the `<50ms` p99 latency requirement. Writes raw webhook payloads directly to Redis Streams, acting as a shock absorber during alert storms up to 500 alerts/sec. Also maintains the JWT revocation blacklist and sliding window rate limiting counters.
 
-### Alert Correlation Engine
+### 3. Alert Correlation Engine
 Processes events from Redis Streams. Uses sliding window fingerprinting (based on service tags, error codes, and time locality) to group related alerts into a single incident entity. Reduces noise and prevents the orchestration engine from being overwhelmed.
 
-### Agent Orchestration Service (LangGraph State Machine)
-The core intelligence layer. Uses LangGraph to manage stateful, multi-agent workflows.
-- **Triage Agent:** Classifies severity (P0-P4) within <3s.
-- **Hybrid RAG Agent:** Interacts with the knowledge service to retrieve relevant runbooks and past post-mortems.
-- **Investigation Agent:** Executes read-only diagnostic tools (fetching logs, querying metrics) within <25s.
-- **Guardrail Validator:** Statically analyzes proposed remediation actions against pre-defined safety policies.
+### 4. Agent Orchestration Service (LangGraph State Machine)
+The core intelligence layer. Uses LangGraph to manage stateful, multi-agent workflows:
+- **Triage Node:** Classifies severity (P0–P4) within `<3s`.
+- **Hybrid RAG Node:** Interacts with the knowledge service to retrieve relevant runbooks and past post-mortems using pgvector dense embeddings + BM25 keyword matching.
+- **Investigation Node:** Executes bounded read-only diagnostic tools (`query_db_metrics`, `fetch_pod_logs`, `check_service_health`) within `<25s`.
+- **Guardrail Validator:** Statically analyzes proposed remediation actions against pre-defined safety policies. Mutating actions are halted and sent to the HITL approval queue.
 
-### RAG Knowledge Service (pgvector + BM25)
-Hybrid search engine backing the Hybrid RAG Agent. Combines dense vector search (pgvector for semantic matching of past incident post-mortems and runbooks) with sparse keyword search (BM25 for exact error codes or trace IDs).
+### 5. Unified Approval Service (`backend/app/services/approval_service.py`)
+Centralized business logic for approving or rejecting high-risk actions.
+- Computes SHA-256 HMAC hash over sorted JSON tool arguments.
+- Validates the 10-minute expiration TTL.
+- Enforces single-use execution tokens.
+- Atomically resolves the associated incident state (`PENDING_APPROVAL` → `APPROVED` → `EXECUTING` → `RESOLVED`).
 
-### Tool Execution Runtime
-A sandboxed environment for executing diagnostic and remediation scripts. Validates parameters and handles API credentials securely. Prevents unauthorized lateral movement.
+### 6. Interactive Telegram Bot Worker (`amber-telegram-bot`)
+A standalone Python container running an isolated `Application.builder()` polling loop connected to `@ambersre_alert_bot`.
+- **Decoupled Architecture:** Runs as a dedicated process separate from Uvicorn web workers, eliminating Telegram 409 Conflict errors.
+- **Commands:** `/status`, `/incidents`, `/pending`, `/approve <id>`, `/reject <id>`, `/simulate`.
+- **1-Click Approvals:** Dispatches inline button callbacks (`callback_data="approve:<id>"`) directly to on-call mobile devices.
 
-### HITL Approval Gateway
-Manages Human-in-the-Loop approvals for high-risk actions. Generates a cryptographic SHA-256 hash of the exact execution plan and parameters. The approval link is valid for a 10-minute TTL. Uses WebSockets for real-time frontend updates and integrates with Slack for approvals.
+### 7. Self-Hosted WhatsApp QR Bridge (`amber-whatsapp-bridge` :3001)
+A Node.js microservice utilizing `@whiskeysockets/baileys` to connect Amber to WhatsApp without expensive third-party Twilio per-message fees.
+- Provides a web QR authentication endpoint (`GET /`).
+- Health status check (`GET /status`).
+- HTTP alert dispatch endpoint (`POST /send-alert`).
 
-### Health Verification Service
-Executes health probes (e.g., HTTP checks, metric queries) post-remediation to verify the fix. Triggers auto-rollback workflows if probes fail.
+### 8. Target Infrastructure Tool Runtime
+A sandboxed execution environment. Validates parameters against static schemas before calling cluster APIs:
+- `query_db_metrics` (LOW risk, autonomous)
+- `fetch_pod_logs` (LOW risk, autonomous, secret redaction)
+- `check_service_health` (LOW risk, autonomous)
+- `kill_db_connections` (HIGH risk, requires HITL approval)
+- `rollback_deployment` (HIGH risk, requires HITL approval)
+- `restart_service_pod` (HIGH risk, requires HITL approval)
 
-### Post-Mortem Compiler
-Automatically synthesizes the incident timeline, agent reasoning traces (fetched from Langfuse telemetry), and remediation actions into a structured Markdown post-mortem document.
+### 9. Edge Frontend (`https://ambersre.xyz`)
+React 19 + TypeScript Single Page Application deployed on Cloudflare Workers edge.
+- Interactive Alert Storm Simulator (Slack desktop view + Telegram smartphone view).
+- Deep Proof Inspection Drawer (live diagnostic evidence, runbook match scores, mutation diffs).
+- Full SEO metadata, Schema.org `SoftwareApplication` JSON-LD, and zero-latency CDN delivery.
 
-### Dashboard & Frontend (Next.js)
-React-based SPA providing the SRE command center. Visualizes incident graphs, agent reasoning, and pending HITL approvals.
+---
 
 ## 4. Data Flow
 
-1. **Ingestion:** Datadog fires a webhook. FastAPI Gateway receives it, validates the signature, and pushes the payload to a Redis Stream (<100ms).
-2. **Correlation:** The Correlation Engine reads the stream, identifies it matches an ongoing CPU spike incident on the `payment-service` based on tags and time window, and attaches the alert to the active incident.
-3. **Triage:** The LangGraph Orchestrator routes the incident to the Triage Agent, which assigns it P1.
-4. **Investigation:** The Investigation Agent queries the Hybrid RAG Agent for similar past CPU spikes. It proposes fetching pod logs and running `top`.
-5. **Tool Execution:** The Tool Runtime executes the read-only commands and returns the logs to the agent.
-6. **Remediation Proposal:** The agent identifies a stuck process and proposes a pod restart.
-7. **Guardrail & HITL:** The Guardrail Validator flags pod restarts on `payment-service` as high-risk. The HITL Gateway generates a SHA-256 payload and pings the SRE Lead on Slack.
-8. **Execution:** The SRE Lead approves. The Tool Runtime executes the restart.
-9. **Verification:** The Health Verification Service checks the `/health` endpoint and CPU metrics for 2 minutes.
-10. **Post-Mortem:** The Post-Mortem Compiler generates a report and saves it to the RAG database for future incidents.
+1. **Ingestion:** Datadog or PagerDuty fires a webhook. `amber-backend` receives it, computes an alert fingerprint, and responds with HTTP 202 Accepted in `<50ms`.
+2. **Buffering & Correlation:** The payload is pushed to Redis Streams. The Correlation Engine groups incoming alerts within a 5-minute sliding window into a unified incident.
+3. **Triage:** LangGraph routes the incident to the Triage Node, assigning severity (e.g. `P0 - Connection Pool Saturation`).
+4. **Investigation:** The Investigation Node queries `amber-postgres` (pgvector) for matched runbooks, executes read-only diagnostics (`query_db_metrics`), and identifies 5 hanging query PIDs.
+5. **Remediation Proposal:** The agent proposes `kill_db_connections(pids=[1021, 1024])`.
+6. **Guardrail Check:** The Guardrail Validator intercepts the proposal, flags it as `HIGH` risk, and freezes execution.
+7. **Omni-Channel Dispatch:** The dispatcher broadcasts the proposal simultaneously to:
+   - Slack (Block Kit card with Deep Proof).
+   - Telegram (`@ambersre_alert_bot` with inline `[Approve]` and `[Reject]` buttons).
+   - WhatsApp (Baileys bridge message with quick approval links).
+   - Web Dashboard (`https://ambersre.xyz`).
+8. **Human Approval:** The SRE Lead clicks `[Approve]` on Telegram.
+9. **Execution & State Resolution:** `ApprovalService` verifies the SHA-256 payload hash and TTL, executes the tool, verifies connection pool recovery, and transitions the incident to `RESOLVED`.
+10. **Audit & Post-Mortem:** Execution results and timing metrics are logged into PostgreSQL for post-mortem analysis.
 
-## 5. Communication Patterns
+---
 
-- **Synchronous (HTTP/REST):** Frontend to API Gateway, Webhook reception, synchronous third-party API calls (e.g., executing a single PagerDuty ack). Chosen for immediate response requirements.
-- **Asynchronous (Redis Streams):** Webhook ingestion to Correlation Engine, Agent task queues. Chosen to handle high throughput (500 alerts/sec) and decouple ingestion from processing.
-- **Real-time (WebSockets):** API Gateway to Frontend for live incident updates and agent reasoning streaming. Chosen for low-latency UI updates without polling.
-- **Telemetry (Async HTTP):** Langfuse trace reporting.
-
-## 6. Deployment Topology
-
-Amber is designed for a **Self-Hosted / Dedicated VPC Single-Tenant** deployment to ensure data privacy and security of infrastructure credentials.
-
-- **VPC Peering/Transit Gateway:** Amber sits in its own dedicated management VPC, peered with the target application VPCs.
-- **Network Segmentation:** Strict Security Groups allow Amber to reach target APIs (K8s API server, SSH Bastions) but prevent target infra from initiating connections to Amber (except via webhooks to the public-facing Gateway).
-- **Container Strategy:**
-  - `amber-api` (FastAPI) - Auto-scaled Deployment.
-  - `amber-worker` (LangGraph/Correlation) - Auto-scaled Deployment based on Redis queue depth.
-  - `amber-db` (PostgreSQL) - StatefulSet or Managed RDS.
-  - `amber-redis` (Redis) - StatefulSet or Managed ElastiCache.
-
-## 7. Technology Decisions Summary Table
+## 5. Technology Decisions Summary Table
 
 | Component | Technology | Why Chosen | Alternatives Considered |
 | :--- | :--- | :--- | :--- |
-| **API Framework** | Python FastAPI | Native async, high throughput, deep ecosystem for LLMs (LangChain). | Node.js/Express (Lacks mature LLM orchestration libs). |
-| **Orchestrator** | LangGraph | Excellent for cyclic, stateful multi-agent workflows. | AutoGen (too opaque), standard LangChain chains (inflexible). |
-| **Primary Database** | PostgreSQL + pgvector | ACID compliance + native vector search simplifies architecture. | Pinecone/Weaviate (Adds operational overhead, split brain issues). |
-| **Event Queue** | Redis Streams | Ultra-fast memory-based append-only log, handles 500/sec easily. | Kafka (Too heavy for standard single-tenant deployments). |
-| **Authentication** | PyJWT + bcrypt | Stateless, easy to integrate with custom RBAC. | Auth0/Cognito (Avoids external dependency for self-hosted). |
-| **Telemetry** | Langfuse | Purpose-built for LLM observability (cost, latency, traces). | Datadog APM (Harder to trace specific LLM reasoning steps). |
-| **Frontend** | React / Next.js | Industry standard, rich ecosystem for dashboards. | Vue.js. |
-
-## 8. Failure Modes & Resilience
-
-- **Webhook API Failure:** If FastAPI goes down, load balancer returns 503. Observability tools must handle retries. To mitigate, the API layer is stateless and heavily scaled.
-- **Redis Crash:** Unprocessed alerts in memory could be lost. **Mitigation:** Redis is configured with AOF (Append Only File) persistence.
-- **LLM Provider Outage (e.g., OpenAI down):** Agents cannot reason. **Mitigation:** Fallback to deterministic runbook execution (e.g., automatically escalate to human SRE without triage). Circuit breakers on LLM API calls prevent cascading timeouts.
-- **Tool Execution Timeout:** If a target system is unresponsive, the sandboxed runtime enforces a strict timeout (e.g., 30s). The failure is fed back to the agent as an observation.
-
-## 9. Security Boundaries
-
-- **Execution Sandbox:** The Tool Execution Runtime operates with least-privilege IAM roles. E.g., it cannot terminate EC2 instances unless explicitly granted.
-- **Cryptographic HITL:** The SHA-256 payload binding ensures that if an SRE approves `Restart Pod X`, a malicious actor cannot intercept the approval and change it to `Drop Database`.
-- **Secret Management:** API keys (OpenAI, Datadog) and SSH keys are stored in a dedicated Secrets Manager (AWS Secrets Manager or HashiCorp Vault), never in the database. Injected at runtime into the Tool Execution environment.
-- **Network Isolation:** The Data plane (Postgres, Redis) is strictly isolated in private subnets with no inbound internet access.
+| **API Framework** | Python FastAPI | Native async, high throughput, deep integration with LangGraph. | Node.js/Express (Lacks mature Python AI libraries). |
+| **Orchestrator** | LangGraph | State machine suited for cyclic, multi-node agent workflows with interrupt support. | AutoGen (Too opaque), standard LangChain chains. |
+| **Primary Database** | PostgreSQL 16 + pgvector | ACID compliance, JSONB support, and embedded vector search in a single database. | Pinecone/Weaviate (Split-brain sync issues, external data egress). |
+| **Event Queue** | Redis 7 Streams | Ultra-fast memory-based append-only log, handles 500 alerts/sec with zero packet loss. | Kafka (Too heavyweight for single-tenant VPC). |
+| **Telegram Bot** | python-telegram-bot | Decoupled standalone polling worker, eliminates multi-worker 409 conflict. | Webhook-based (Requires public domain mapping for local bots). |
+| **WhatsApp Bridge** | Baileys (Node.js) | Self-hosted WhatsApp Web session, zero per-message cost, fully in-VPC. | Twilio API ($0.05/msg, data leaves customer perimeter). |
+| **Frontend Edge** | React 19 + Cloudflare Workers | Instant global edge CDN, zero-cost static hosting, universal SSL. | Vercel (Higher cold starts, custom domain setup). |
+| **Production Domain** | ambersre.xyz | Dedicated official domain with Google Trust Services SSL. | Mock staging domains. |

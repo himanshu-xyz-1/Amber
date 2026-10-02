@@ -1,99 +1,156 @@
-# Amber
+# Amber — Autonomous Incident Remediation & SRE Engine
 
-> **Status:** Active Development / Building Phase (Phase 1: Ingestion & Backend Core)
+> **Status:** Phase 3 — Governed HITL Remediation & Live In-VPC Production Engine  
+> **Live Web Platform:** [https://ambersre.xyz](https://ambersre.xyz)  
+> **Interactive Telegram Bot:** [@ambersre_alert_bot](https://t.me/ambersre_alert_bot)  
+> **License:** Source-Available / Enterprise Commercial Open Core
 
-Amber is an autonomous incident remediation engine for infrastructure and backend services. It sits between incoming alert streams (PagerDuty, Datadog, Sentry) and production environments to diagnose issues, fetch runbooks, and propose bounded remediation actions.
+Amber is an autonomous incident remediation engine engineered for high-velocity infrastructure and backend engineering teams. It sits between incoming alert streams (PagerDuty, Datadog, Sentry, Prometheus) and production clusters to diagnose issues, fetch runbooks, and execute bounded remediation actions under strict cryptographic human supervision.
+
+---
 
 ### Core Safety Thesis
-LLMs propose; deterministic code and human operators decide.
+> **LLMs propose; deterministic code and human operators decide.**
 
-Amber never gives an LLM raw terminal access or uncontrolled database write permissions. Mutating actions (killing connections, restarting pods, rolling back deployments) require cryptographic Human-in-the-Loop (HITL) approval with a 10-minute TTL. Read-only diagnostic tools run autonomously with strict time limits.
+Amber never grants an LLM raw terminal access or unbounded database mutations. Mutating actions (killing stuck DB connections, restarting pods, rolling back deployments) require cryptographic Human-in-the-Loop (HITL) approval with a 10-minute TTL and SHA-256 payload binding. Read-only diagnostic tools run autonomously with strict sub-second timeouts.
 
 ---
 
-## Current Architecture & Implementation Status
+## Production Multi-Container Architecture
 
+```text
+               Alert Ingestion (PagerDuty / Datadog / Sentry / Prometheus)
+                                          │
+                                          ▼
+                      ┌───────────────────────────────────────┐
+                      │    amber-backend (FastAPI :8000)      │
+                      │  Webhook Ingestion (<50ms Ack)        │
+                      └───────────────────┬───────────────────┘
+                                          │
+                                          ▼
+                      ┌───────────────────────────────────────┐
+                      │      amber-redis (Redis 7 Alpine)     │
+                      │   Event Streams & Deduplication       │
+                      └───────────────────┬───────────────────┘
+                                          │
+                                          ▼
+                      ┌───────────────────────────────────────┐
+                      │       LangGraph Multi-Agent Engine    │
+                      │  ├── Triage Node (P0–P4 in <3s)       │
+                      │  ├── Hybrid RAG (pgvector + BM25)     │
+                      │  ├── Bounded Diagnostic Tool Loop     │
+                      │  └── Deterministic Guardrails         │
+                      └───────────────────┬───────────────────┘
+                                          │
+                         ┌────────────────┴────────────────┐
+                         │                                 │
+                   [Low-Risk Action]               [High-Risk Action]
+                         │                                 │
+                         ▼                                 ▼
+               Autonomous Execution               SHA-256 Bound HITL
+               (Read-only queries)                (10-Minute TTL Window)
+                                                           │
+                                                           ▼
+                                            ┌───────────────────────────────┐
+                                            │ Unified Approval Service      │
+                                            │ ├── Web: ambersre.xyz         │
+                                            │ ├── Telegram: @ambersre_alert │
+                                            │ ├── WhatsApp: Baileys Bridge  │
+                                            │ └── Slack: Block Kit Cards    │
+                                            └───────────────────────────────┘
+                                                           │
+                                                           ▼
+                                            ┌───────────────────────────────┐
+                                            │    PostgreSQL 16 + pgvector   │
+                                            │  Audit Logs & State Machine   │
+                                            └───────────────────────────────┘
 ```
-Alert Ingestion (Webhooks)
-          │
-          ▼
-Fingerprint & Sliding Window Correlation
-          │
-          ▼
-LangGraph Orchestrator
-   ├── Triage Node (P0-P4 severity classification)
-   ├── Hybrid RAG Node (Runbook lookup)
-   ├── Investigation Node (Read-only diagnostic tool loop)
-   └── Guardrail Validator (Deterministic risk enforcement)
-          │
-     ┌────┴────┐
-High Risk   Low Risk
-     │         │
-     ▼         ▼
-HITL Gateway  Autonomous Runner
-(SHA-256 bound)
+
+---
+
+## Implemented Production Stack
+
+### 1. Multi-Container Orchestration (`docker-compose.yml`)
+- **`amber-postgres` (Port 5432):** PostgreSQL 16 with `pgvector` extension for incident auditing, graph checkpoints, and vector embeddings.
+- **`amber-redis` (Port 6379):** Redis 7 Streams for alert storm buffering, sliding window deduplication, and token revocation.
+- **`amber-backend` (Port 8000):** Stateless async FastAPI gateway serving REST APIs, webhooks, and health endpoints (`/health/liveness`, `/health/readiness`).
+- **`amber-whatsapp-bridge` (Port 3001):** Dedicated Node.js Baileys microservice with web QR authentication (`GET /`) and live alert dispatch.
+- **`amber-telegram-bot`:** Standalone singleton worker polling `@ambersre_alert_bot`, providing in-app 1-click mobile approvals and eliminating Uvicorn multi-worker 409 conflicts.
+
+### 2. Multi-Channel Approvals (`backend/app/services/approval_service.py`)
+- **Cryptographic Binding:** SHA-256 hash generated over sorted JSON arguments. Any tampering immediately invalidates the approval token.
+- **10-Minute Expiration Window:** Expired tokens are marked `EXPIRED` automatically.
+- **Atomic Incident Transition:** Approving a tool atomically transitions the associated incident from `PROPOSED` → `EXECUTING` → `RESOLVED`.
+- **Cross-Channel Synchronization:** Decisions made via Telegram, WhatsApp, Slack, or Web Dashboard instantly reflect across the entire system.
+
+### 3. Agent Pipeline (`backend/app/agents/`)
+- **Triage Node:** Evaluates alert payloads, logs, and stack traces into severity tiers (P0–P4) in <3 seconds.
+- **Hybrid RAG Node:** Matches incident signatures against internal markdown runbooks using dense embeddings + BM25 keyword search.
+- **Investigation Node:** Executes sandboxed, bounded diagnostic tools (`query_db_metrics`, `fetch_pod_logs`, `check_service_health`).
+- **Guardrail Node:** Validates proposed remediation tools against a static code-compiled risk matrix. LLMs cannot modify tool risk levels.
+
+### 4. Live Frontend Edge (`https://ambersre.xyz`)
+- Built with React 19, TypeScript, Tailwind CSS, and Framer Motion.
+- Edge-deployed to Cloudflare Workers with automated universal SSL (Google Trust Services).
+- Includes an interactive alert storm simulator, Deep Proof inspection drawer, live incident matrices, and full SEO metadata (Schema.org JSON-LD, OpenGraph, Twitter Cards, `robots.txt`, and `sitemap.xml`).
+
+---
+
+## Quickstart
+
+### Option A: Run Full Production Stack with Docker Compose (Recommended)
+
+Boot all 5 services with one command:
+
+```bash
+docker compose up -d
 ```
 
-### What is Built So Far:
+Verify that all containers are healthy:
+```bash
+docker compose ps
+```
 
-1. **System Design & Specs (`docs/`):**
-   - 11 production design documents covering database architecture, auth lifecycle, sliding-window rate limiting, horizontal scaling, CI/CD, and API management.
-   - Complete Product Requirements Document (PRD) with failure modes and threat model.
+Expected output:
+```text
+NAME                     IMAGE                  STATUS
+amber-postgres           pgvector/pgvector:pg16 Up (healthy)
+amber-redis              redis:7-alpine         Up (healthy)
+amber-backend            amber-backend          Up (healthy) 0.0.0.0:8000->8000/tcp
+amber-whatsapp-bridge    whatsapp-bridge        Up (healthy) 0.0.0.0:3001->3001/tcp
+amber-telegram-bot       amber-backend          Up           (polling @ambersre_alert_bot)
+```
 
-2. **Core & Database Layer (`backend/app/core/`, `backend/app/models/`):**
-   - Async SQLAlchemy 2.0 with connection pooling and session management.
-   - SQLite for local dev, PostgreSQL + pgvector target for production.
-   - Core relational models: `incidents`, `alerts`, `tool_invocations`, `users`, `runbooks`.
-
-3. **Tool Registry (`backend/app/tools/`):**
-   - Static risk classification (`LOW` vs `HIGH`). Risk levels cannot be overridden by LLMs.
-   - Diagnostic tools (Read-only): `query_db_metrics`, `fetch_pod_logs`, `check_service_health`.
-   - Remediation tools (Mutating): `kill_db_connections`, `rollback_deployment`, `restart_service_pod`.
-   - Payload hashing (SHA-256) on tool arguments before human approval requests.
-
-4. **Agent Pipeline (`backend/app/agents/`):**
-   - LangGraph state machine orchestrating: `triage -> rag -> investigation -> guardrail`.
-   - Automatic execution halt when a proposed tool is marked `HIGH` risk.
-
-5. **API Gateway (`backend/app/api/v1/`):**
-   - Fast webhook ingestion endpoint (`/api/v1/webhooks/{source}`) returning 202 Accepted.
-   - Incident management CRUD and execution timeline endpoints.
-   - Cryptographic approval submission endpoint (`/api/v1/approvals`).
-   - Liveness and readiness health checks.
+To view live backend logs:
+```bash
+docker compose logs -f amber-backend amber-telegram-bot
+```
 
 ---
 
-## What is Being Improved Right Now
+### Option B: Local Python Development Setup
 
-- **Redis Stream Ingestion Buffer:** Moving from direct database writes to a high-throughput Redis Stream to safely absorb alert storms up to 500 alerts/sec.
-- **Real LLM Integration:** Replacing heuristic mock logic in the triage and investigation nodes with Claude 3.5 Sonnet / GPT-4o-mini structured tool calling.
-- **pgvector Runbook Search:** Adding dense vector embeddings + BM25 keyword search for matching incident signatures against internal markdown runbooks.
-- **Slack Block Kit Integration:** Interactive Slack message cards allowing SREs to expand diagnostic proof and approve remediation with 1 click.
-
----
-
-## Local Development Setup
-
-### Prerequisites
+#### Prerequisites
 - Python 3.10+
 - `uv` (recommended) or standard `venv`
 
-### Installation
-
+#### 1. Environment & Dependencies
 ```bash
 # Clone the repository
 git clone https://github.com/himanshu-xyz-1/Amber.git
 cd Amber
 
-# Create virtual environment and install dependencies
+# Set up virtual environment
 uv venv
 source .venv/bin/activate
 uv pip install -r requirements.txt
 
 # Configure environment
 cp .env.example .env
+```
 
-# Run database migrations / initialize tables
+#### 2. Run Database Migrations
+```bash
 python3 -c "
 import asyncio
 from backend.app.core.database import engine, Base
@@ -103,45 +160,57 @@ async def init():
         await conn.run_sync(Base.metadata.create_all)
 asyncio.run(init())
 "
+```
 
-# Start development server
+#### 3. Run Test Suite
+```bash
+pytest tests/ -v
+```
+*(All 20 test cases pass out of the box).*
+
+#### 4. Start Development Server
+```bash
 uvicorn backend.app.main:app --reload --port 8000
 ```
 
-Interactive API documentation available at:
+Interactive documentation:
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
 ---
 
-## Enterprise Commercial Licensing & Community Mode
+## Telegram SRE Bot Commands
 
-Amber is distributed under a source-available / commercial open core model:
+Connect to `@ambersre_alert_bot` on Telegram and use:
+- `/status` — Check system health, database connection, and Redis status.
+- `/incidents` — View the 5 most recent incidents and their status.
+- `/pending` — List high-risk remediation actions awaiting human approval.
+- `/approve <invocation_id>` — Approve a pending remediation action.
+- `/reject <invocation_id>` — Reject a pending remediation action.
+- `/simulate` — Trigger an instant P0 connection pool saturation simulation.
 
-- **Community Edition (Default):**
-  - Alert ingestion, fingerprint deduplication, incident triage, and bounded read-only diagnostics.
-  - Multi-channel notification dispatchers (`Slack`, `Telegram`, `WhatsApp`) and automated production rollbacks require an Amber Enterprise License Key.
+---
+
+## Enterprise Commercial Licensing
+
+Amber is distributed under a source-available, commercial open core model:
+
+- **Community Edition:**
+  - Ingestion buffer, fingerprint deduplication, incident triage, and bounded read-only diagnostics.
 - **Enterprise Edition:**
   - Multi-channel 1-click approvals across Slack Block Kit, Telegram Bot, and Baileys WhatsApp bridges.
   - Autonomous mutating remediation with SHA-256 cryptographic human-in-the-loop verification.
   - Offline Ed25519 signature validation (zero DRM call-homes, fully air-gapped VPC compatible).
 
-### Activating a License Key
+### License Key Activation
+```bash
+# Via CLI
+python scripts/activate_key.py --key amb_live_...
 
-1. **Interactive CLI Prompt:**
-   ```bash
-   python scripts/activate_key.py
-   ```
-2. **Direct CLI Activation:**
-   ```bash
-   python scripts/activate_key.py --key amb_live_...
-   ```
-3. **HTTP REST API:**
-   ```bash
-   curl -X POST http://localhost:8000/api/v1/license/activate \
-     -H "Content-Type: application/json" \
-     -d '{"license_key": "amb_live_..."}'
-   ```
+# Via REST API
+curl -X POST http://localhost:8000/api/v1/license/activate \
+  -H "Content-Type: application/json" \
+  -d '{"license_key": "amb_live_..."}'
+```
 
-To request a commercial license key, visit: [https://amber-frontend-xyz.pages.dev/#contact](https://amber-frontend-xyz.pages.dev/#contact)
-
+To request a commercial license or book an architecture review, visit [https://ambersre.xyz](https://ambersre.xyz).
