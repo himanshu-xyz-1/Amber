@@ -17,10 +17,12 @@ class Settings(BaseSettings):
 
     # 2. Server & Networking
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
-    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
-
-    # 3. Primary Database & Vector Store
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "https://ambersre.xyz",
+        "https://www.ambersre.xyz",
+        "https://amber-frontend.pages.dev"
+    ]
     # Development: SQLite (aiosqlite) | Production: PostgreSQL (asyncpg) + pgvector
     DATABASE_URL: str = "sqlite+aiosqlite:///./amber.db"
 
@@ -54,7 +56,7 @@ class Settings(BaseSettings):
     TWILIO_WHATSAPP_FROM: Optional[str] = None  # e.g., "whatsapp:+14155238886"
     WHATSAPP_ALERT_TO: Optional[str] = None     # e.g., "919876543210" or "whatsapp:+919876543210"
     WHATSAPP_BRIDGE_URL: Optional[str] = None   # e.g., "http://localhost:3001" for self-hosted QR bridge
-    DASHBOARD_URL: str = "http://localhost:3000"
+    DASHBOARD_URL: str = "https://ambersre.xyz"
     GMAIL_USER: str = "amber.incident@gmail.com"
     GMAIL_APP_PASSWORD: Optional[str] = None
 
