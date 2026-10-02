@@ -5,6 +5,7 @@ across Web Dashboard, Telegram Bot, and Slack integrations.
 """
 
 from datetime import datetime, timezone
+import json
 import logging
 from typing import Any, Dict, Optional
 import uuid
@@ -60,12 +61,17 @@ async def execute_tool_approval(
             status_code=400
         )
 
-    # 1. Cryptographic hash verification
-    if invocation.payload_sha256 and payload_sha256:
+    # 1. Cryptographic hash verification on approval
+    if action == "approve" and invocation.payload_sha256:
+        if not payload_sha256:
+            raise ApprovalExecutionError(
+                "Cryptographic verification required: payload_sha256 argument hash is mandatory.",
+                status_code=403
+            )
         if invocation.payload_sha256 != payload_sha256:
             raise ApprovalExecutionError(
                 "Cryptographic payload mismatch! Potential argument tampering.",
-                status_code=400
+                status_code=403
             )
 
     # 2. Check 10-minute TTL expiry
@@ -92,20 +98,27 @@ async def execute_tool_approval(
 
         tool = tool_registry.get(invocation.tool_name)
         if tool:
-            invocation.status = InvocationStatus.EXECUTING
-            try:
-                tool_res = await tool.execute(**(invocation.tool_args or {}))
-                invocation.execution_result = tool_res.data
-                invocation.health_check_passed = tool_res.success
-                invocation.executed_at = datetime.now(timezone.utc)
-                invocation.status = InvocationStatus.EXECUTED if tool_res.success else InvocationStatus.FAILED
-                if not tool_res.success:
-                    invocation.error_message = tool_res.error
-            except Exception as e:
-                logger.exception(f"Error executing approved tool {invocation.tool_name}: {e}")
+            tool_args = invocation.tool_args or {}
+            # Enforce argument validation guardrail before execution
+            if not tool.validate_args(**tool_args):
                 invocation.status = InvocationStatus.FAILED
-                invocation.error_message = str(e)
+                invocation.error_message = f"Tool argument validation guardrail rejected args for '{invocation.tool_name}'."
                 invocation.executed_at = datetime.now(timezone.utc)
+            else:
+                invocation.status = InvocationStatus.EXECUTING
+                try:
+                    tool_res = await tool.execute(**tool_args)
+                    invocation.execution_result = tool_res.data
+                    invocation.health_check_passed = tool_res.success
+                    invocation.executed_at = datetime.now(timezone.utc)
+                    invocation.status = InvocationStatus.EXECUTED if tool_res.success else InvocationStatus.FAILED
+                    if not tool_res.success:
+                        invocation.error_message = tool_res.error
+                except Exception as e:
+                    logger.exception(f"Error executing approved tool {invocation.tool_name}: {e}")
+                    invocation.status = InvocationStatus.FAILED
+                    invocation.error_message = str(e)
+                    invocation.executed_at = datetime.now(timezone.utc)
         else:
             invocation.status = InvocationStatus.FAILED
             invocation.error_message = f"Tool '{invocation.tool_name}' not found in registry"
@@ -118,29 +131,10 @@ async def execute_tool_approval(
                 if invocation.status == InvocationStatus.EXECUTED:
                     incident.status = IncidentStatus.RESOLVED
                     incident.resolved_at = datetime.now(timezone.utc)
-                    # Notify target application if an external callback webhook was provided in the alert payload
-                    try:
-                        raw_payload = {}
-                        if incident.description:
-                            try:
-                                raw_payload = json.loads(incident.description)
-                            except Exception:
-                                pass
-                        callback_url = raw_payload.get("target_service_url") or raw_payload.get("raw_payload", {}).get("target_service_url")
-                        if callback_url:
-                            import httpx
-                            async with httpx.AsyncClient(timeout=3.0) as client:
-                                await client.post(
-                                    callback_url,
-                                    json={
-                                        "incident_id": str(incident.id),
-                                        "tool_name": invocation.tool_name,
-                                        "result": invocation.execution_result,
-                                        "approver": approver_label
-                                    }
-                                )
-                    except Exception:
-                        pass
+                    logger.info(
+                        f"Remediation '{invocation.tool_name}' completed for incident '{incident.id}' "
+                        f"(approver: {approver_label})."
+                    )
                 elif invocation.status == InvocationStatus.FAILED:
                     incident.status = IncidentStatus.FAILED
 

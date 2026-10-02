@@ -36,7 +36,10 @@ if [ ! -f .env ]; then
     echo "🔐 Generating cryptographic cluster keys..."
     cp .env.example .env
     JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || date +%s | sha256sum | base64 | head -c 32)
+    PG_PASS=$(openssl rand -hex 16 2>/dev/null || date +%s | sha256sum | base64 | head -c 16)
     sed -i "s|JWT_SECRET_KEY=.*|JWT_SECRET_KEY=${JWT_SECRET}|g" .env
+    sed -i "s|POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${PG_PASS}|g" .env
+    sed -i "s|amber_secure_pass_2026|${PG_PASS}|g" .env
 fi
 
 # 4. Single-Command Ignition

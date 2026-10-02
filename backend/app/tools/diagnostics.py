@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -61,15 +60,19 @@ class QueryDatabaseMetrics(BaseTool):
                     max_connections = int(max_connections_val)
                     pool_utilization_pct = round((active_connections / max_connections) * 100, 1)
 
-                # Query slow or idle-in-transaction queries
-                slow_res = await session.execute(text(f"""
-                    SELECT pid, query, state, 
-                           ROUND(EXTRACT(EPOCH FROM (now() - query_start))::numeric, 2) as runtime_seconds
-                    FROM pg_stat_activity 
-                    WHERE state != 'idle' 
-                      AND (now() - query_start) > INTERVAL '{threshold} seconds'
-                    LIMIT 5;
-                """))
+                # Query slow or idle-in-transaction queries with parameterized interval
+                safe_threshold = int(threshold) if isinstance(threshold, (int, float)) and threshold >= 0 else 60
+                slow_res = await session.execute(
+                    text("""
+                        SELECT pid, query, state, 
+                               ROUND(EXTRACT(EPOCH FROM (now() - query_start))::numeric, 2) as runtime_seconds
+                        FROM pg_stat_activity 
+                        WHERE state != 'idle' 
+                          AND (now() - query_start) > (:threshold * INTERVAL '1 second')
+                        LIMIT 5;
+                    """),
+                    {"threshold": safe_threshold}
+                )
                 for row in slow_res.fetchall():
                     slow_queries.append({
                         "pid": row[0],
@@ -199,7 +202,27 @@ class CheckServiceHealth(BaseTool):
         return 5
 
     def validate_args(self, **kwargs) -> bool:
-        return "endpoint_url" in kwargs and isinstance(kwargs["endpoint_url"], str)
+        url = kwargs.get("endpoint_url")
+        if not url or not isinstance(url, str):
+            return False
+        from urllib.parse import urlparse
+        import ipaddress
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # Block cloud instance metadata IP specifically (169.254.169.254)
+        if hostname == "169.254.169.254" or hostname == "metadata.google.internal":
+            return False
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_link_local:
+                return False
+        except ValueError:
+            pass
+        return True
 
     async def execute(self, **kwargs) -> ToolResult:
         start_time = time.time()

@@ -67,6 +67,12 @@ async def test_execute_tool_approval_lifecycle():
         rejected.status = InvocationStatus.PENDING_APPROVAL
         await session.commit()
 
+        # Approval without payload_sha256 must be rejected with 403
+        with pytest.raises(ApprovalExecutionError) as exc_info:
+            await execute_tool_approval(inv_id, "approve", session)
+        assert exc_info.value.status_code == 403
+
+        # Approval with matching payload_sha256 succeeds
         approved = await execute_tool_approval(inv_id, "approve", session, payload_sha256="abc123sha")
         assert approved.status == InvocationStatus.EXECUTED
         assert approved.health_check_passed is True

@@ -48,6 +48,7 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
             inc_res = await session.execute(
                 select(Incident)
                 .filter(Incident.fingerprint == alert.fingerprint)
+                .filter(Incident.created_at >= five_mins_ago)
                 .filter(Incident.status.in_([IncidentStatus.TRIGGERED, IncidentStatus.INVESTIGATING, IncidentStatus.PROPOSED]))
                 .order_by(Incident.created_at.desc())
             )

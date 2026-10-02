@@ -11,8 +11,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # 1. Project Info & Runtime Environment
     APP_NAME: str = "Amber"
-    ENVIRONMENT: str = "development"
-    DEBUG: bool = True
+    ENVIRONMENT: str = "production"
+    DEBUG: bool = False
     API_V1_PREFIX: str = "/api/v1"
 
     # 2. Server & Networking
@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     SLACK_WEBHOOK_URL: Optional[str] = None
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
+    TELEGRAM_ADMIN_CHAT_IDS: Optional[str] = None  # Comma-separated admin chat IDs authorized to approve/reject
     TWILIO_ACCOUNT_SID: Optional[str] = None
     TWILIO_AUTH_TOKEN: Optional[str] = None
     TWILIO_WHATSAPP_FROM: Optional[str] = None  # e.g., "whatsapp:+14155238886"

@@ -220,8 +220,30 @@ async def handle_pending_command(token: str, chat_id: int | str):
         await send_telegram_reply(token, chat_id, f"❌ Failed to fetch pending approvals: {html.escape(str(e))}")
 
 
+def _is_authorized_admin(chat_id: int | str) -> bool:
+    """Checks if the Telegram user or chat is an authorized SRE admin."""
+    chat_str = str(chat_id)
+    allowed = set()
+    if settings.TELEGRAM_CHAT_ID:
+        allowed.add(str(settings.TELEGRAM_CHAT_ID).strip())
+    if settings.TELEGRAM_ADMIN_CHAT_IDS:
+        for cid in settings.TELEGRAM_ADMIN_CHAT_IDS.split(","):
+            if cid.strip():
+                allowed.add(cid.strip())
+    if not allowed:
+        return True
+    return chat_str in allowed
+
+
 async def handle_approve_command(token: str, chat_id: int | str, text: str, user_name: str):
     """Handles manual `/approve <uuid>` command."""
+    if not _is_authorized_admin(chat_id):
+        await send_telegram_reply(
+            token, chat_id,
+            "⛔ <b>Access Denied:</b> You are not authorized to execute remediation commands."
+        )
+        return
+
     parts = text.split()
     if len(parts) < 2:
         await send_telegram_reply(
@@ -233,11 +255,18 @@ async def handle_approve_command(token: str, chat_id: int | str, text: str, user
     inv_id = parts[1].strip()
     try:
         async with AsyncSessionLocal() as session:
+            inv_uuid = uuid.UUID(inv_id)
+            inv_res = await session.execute(select(ToolInvocation).filter(ToolInvocation.id == inv_uuid))
+            invocation = inv_res.scalar_one_or_none()
+            if not invocation:
+                raise ApprovalExecutionError(f"Tool invocation '{inv_id}' not found.", status_code=404)
+
             inv = await execute_tool_approval(
                 tool_invocation_id=inv_id,
                 action="approve",
                 db=session,
                 approver_label=f"@{user_name}",
+                payload_sha256=invocation.payload_sha256,
             )
 
         res_json = json.dumps(inv.execution_result or {}, indent=2)
@@ -259,6 +288,13 @@ async def handle_approve_command(token: str, chat_id: int | str, text: str, user
 
 async def handle_reject_command(token: str, chat_id: int | str, text: str, user_name: str):
     """Handles manual `/reject <uuid>` command."""
+    if not _is_authorized_admin(chat_id):
+        await send_telegram_reply(
+            token, chat_id,
+            "⛔ <b>Access Denied:</b> You are not authorized to reject remediation commands."
+        )
+        return
+
     parts = text.split()
     if len(parts) < 2:
         await send_telegram_reply(
@@ -288,6 +324,13 @@ async def handle_reject_command(token: str, chat_id: int | str, text: str, user_
 
 async def handle_simulate_command(token: str, chat_id: int | str):
     """Triggers an end-to-end simulated incident test."""
+    if not _is_authorized_admin(chat_id):
+        await send_telegram_reply(
+            token, chat_id,
+            "⛔ <b>Access Denied:</b> You are not authorized to trigger simulation drills."
+        )
+        return
+
     await send_telegram_reply(token, chat_id, "🚨 <i>Injecting simulated P1 Postgres Connection Pool Outage alert...</i>")
     from backend.app.agents.processor import process_alert_into_incident
     from backend.app.models.alert import Alert, AlertSource
@@ -334,17 +377,28 @@ async def handle_telegram_callback(cb: Dict[str, Any], token: str):
     msg_id = msg.get("message_id")
     from_user = cb.get("from", {}).get("username") or cb.get("from", {}).get("first_name", "SRE")
 
+    if not _is_authorized_admin(chat_id):
+        await answer_callback_query(token, cb_id, "⛔ Access Denied: Unauthorized user.")
+        return
+
     if data.startswith("approve:"):
         inv_id = data.split("approve:")[1].strip()
         await answer_callback_query(token, cb_id, "⚡ Executing remediation inside VPC...")
 
         try:
             async with AsyncSessionLocal() as session:
+                inv_uuid = uuid.UUID(inv_id)
+                inv_res = await session.execute(select(ToolInvocation).filter(ToolInvocation.id == inv_uuid))
+                invocation = inv_res.scalar_one_or_none()
+                if not invocation:
+                    raise ApprovalExecutionError(f"Tool invocation '{inv_id}' not found.", status_code=404)
+
                 inv = await execute_tool_approval(
                     tool_invocation_id=inv_id,
                     action="approve",
                     db=session,
                     approver_label=f"@{from_user}",
+                    payload_sha256=invocation.payload_sha256,
                 )
 
             res_data = inv.execution_result or {}

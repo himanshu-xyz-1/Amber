@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -172,9 +173,13 @@ Return your answer strictly in this valid JSON format with no markdown wrappers:
 }}
 """
         try:
-            res = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=prompt
+            res = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.models.generate_content,
+                    model="gemini-3.8-flash",
+                    contents=prompt
+                ),
+                timeout=15.0
             )
             raw_text = res.text.strip()
             # Clean possible markdown block wrappers

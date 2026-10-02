@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -91,9 +92,13 @@ Rules:
 }}
 """
         try:
-            res = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=prompt
+            res = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.models.generate_content,
+                    model="gemini-3.8-flash",
+                    contents=prompt
+                ),
+                timeout=15.0
             )
             raw_text = res.text.strip()
             if raw_text.startswith("```json"):
@@ -111,12 +116,16 @@ Rules:
 
             matched_tool = tool_registry.get(tool_name)
             if matched_tool:
-                proposed_tools.append({
-                    "tool_name": matched_tool.name,
-                    "args": tool_args,
-                    "risk_level": matched_tool.risk_level.value,
-                    "reversible": matched_tool.reversible
-                })
+                # Guardrail: Validate tool arguments before accepting proposal
+                if matched_tool.validate_args(**tool_args):
+                    proposed_tools.append({
+                        "tool_name": matched_tool.name,
+                        "args": tool_args,
+                        "risk_level": matched_tool.risk_level.value,
+                        "reversible": matched_tool.reversible
+                    })
+                else:
+                    logger.warning(f"LLM proposed invalid args for tool '{matched_tool.name}': {tool_args}")
         except Exception as e:
             logger.warning(f"Gemini investigation failed, falling back to deterministic policy: {e}")
 
