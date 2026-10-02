@@ -10,6 +10,7 @@ from backend.app.api.v1.webhooks import router as webhook_router
 from backend.app.api.v1.incidents import router as incident_router
 from backend.app.api.v1.approvals import router as approval_router
 from backend.app.api.v1.contact import router as contact_router
+from backend.app.api.v1.license import router as license_router
 
 from backend.app.core.license import license_manager
 
@@ -50,6 +51,7 @@ app.include_router(webhook_router, prefix=settings.API_V1_PREFIX)
 app.include_router(incident_router, prefix=settings.API_V1_PREFIX)
 app.include_router(approval_router, prefix=settings.API_V1_PREFIX)
 app.include_router(contact_router, prefix=settings.API_V1_PREFIX)
+app.include_router(license_router, prefix=settings.API_V1_PREFIX)
 
 @app.get("/")
 async def root():

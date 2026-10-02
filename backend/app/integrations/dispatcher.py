@@ -30,9 +30,11 @@ async def dispatch_incident_notifications(
     allow_whatsapp = license_manager.is_feature_enabled("whatsapp_bridge")
 
     if not license_manager.is_valid:
+        import os
+        contact_url = os.getenv("AMBER_CONTACT_URL", "https://amber-frontend-xyz.pages.dev/#contact")
         logger.warning(
-            "⚠️  [AMBER COMMUNITY EDITION] Multi-channel alerts locked. "
-            "Visit https://amber.dev to get your Enterprise License Key."
+            "⚠️  [AMBER COMMUNITY EDITION] Multi-channel alerts (Slack, Telegram, WhatsApp) are locked.\n"
+            f"👉 Visit {contact_url} to get your Enterprise License Key."
         )
 
     tasks = {}

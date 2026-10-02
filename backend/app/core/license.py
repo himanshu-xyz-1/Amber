@@ -6,6 +6,7 @@ Cryptographically validates Ed25519-signed commercial license tokens offline.
 import base64
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -154,20 +155,23 @@ class LicenseManager:
 
     def print_startup_banner(self):
         """Displays informative ASCII status banner at system boot."""
+        contact_url = os.getenv("AMBER_CONTACT_URL", "https://amber-frontend-xyz.pages.dev/#contact")
         if self.is_valid:
-            print("\n" + "=" * 68)
+            print("\n" + "=" * 70)
             print(f"💎 AMBER ENTERPRISE ACTIVE: Licensed to '{self.org}'")
             print(f"📦 Tier: {self.tier.upper()} | Limit: {self.max_nodes} Nodes, {self.max_services} Services")
             print(f"⏳ Validity: {self.days_remaining} Days Remaining (Expires {self.expires_at.strftime('%Y-%m-%d')})")
             print("⚡ Multi-Channel Engine: Slack, Telegram, WhatsApp & HITL Approvals UNLOCKED")
-            print("=" * 68 + "\n")
+            print("=" * 70 + "\n")
         else:
-            print("\n" + "=" * 68)
-            print("⚠️  AMBER COMMUNITY EDITION (Unregistered / Expired)")
-            print(f"Status: {self.error_message}")
+            print("\n" + "=" * 70)
+            print("🔐 AMBER ENTERPRISE KEY REQUIRED")
+            print("⚠️  Running in Community Edition (Unregistered / Expired)")
+            print(f"ℹ️  Status: {self.error_message}")
             print("🔒 Multi-Channel Notifications (Slack, Telegram, WhatsApp) are LOCKED.")
-            print("👉 Get your Commercial License Key at: https://amber.dev/pricing")
-            print("=" * 68 + "\n")
+            print(f"👉 GET YOUR KEY: {contact_url}")
+            print("💡 To activate, set AMBER_LICENSE_KEY in your .env or POST to /api/v1/license/activate")
+            print("=" * 70 + "\n")
 
 
 # Global singleton instance

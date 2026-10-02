@@ -67,3 +67,39 @@ def test_community_mode_when_no_token():
     assert manager.is_feature_enabled("slack_approvals") is False
     assert manager.is_feature_enabled("whatsapp_bridge") is False
     assert manager.is_feature_enabled("telegram_bot") is False
+
+
+def test_license_status_api():
+    from fastapi.testclient import TestClient
+    from backend.app.main import app
+
+    client = TestClient(app)
+    response = client.get("/api/v1/license/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert "status" in data
+    assert "contact_url" in data
+    assert "get_key_url" in data
+
+
+def test_license_activate_api():
+    from fastapi.testclient import TestClient
+    from backend.app.main import app
+
+    client = TestClient(app)
+    # 1. Invalid key fails
+    bad_res = client.post("/api/v1/license/activate", json={"license_key": "bad_key"})
+    assert bad_res.status_code == 400
+
+    # 2. Valid key succeeds
+    token, _ = generate_license(
+        org="API Test Corp",
+        tier="response",
+        days=14,
+        key_path=DEFAULT_KEY_PATH
+    )
+    good_res = client.post("/api/v1/license/activate", json={"license_key": token})
+    assert good_res.status_code == 200
+    assert good_res.json()["success"] is True
+    assert good_res.json()["details"]["org"] == "API Test Corp"
+

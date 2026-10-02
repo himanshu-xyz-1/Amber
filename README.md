@@ -111,3 +111,37 @@ uvicorn backend.app.main:app --reload --port 8000
 Interactive API documentation available at:
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
+
+---
+
+## Enterprise Commercial Licensing & Community Mode
+
+Amber is distributed under a source-available / commercial open core model:
+
+- **Community Edition (Default):**
+  - Alert ingestion, fingerprint deduplication, incident triage, and bounded read-only diagnostics.
+  - Multi-channel notification dispatchers (`Slack`, `Telegram`, `WhatsApp`) and automated production rollbacks require an Amber Enterprise License Key.
+- **Enterprise Edition:**
+  - Multi-channel 1-click approvals across Slack Block Kit, Telegram Bot, and Baileys WhatsApp bridges.
+  - Autonomous mutating remediation with SHA-256 cryptographic human-in-the-loop verification.
+  - Offline Ed25519 signature validation (zero DRM call-homes, fully air-gapped VPC compatible).
+
+### Activating a License Key
+
+1. **Interactive CLI Prompt:**
+   ```bash
+   python scripts/activate_key.py
+   ```
+2. **Direct CLI Activation:**
+   ```bash
+   python scripts/activate_key.py --key amb_live_...
+   ```
+3. **HTTP REST API:**
+   ```bash
+   curl -X POST http://localhost:8000/api/v1/license/activate \
+     -H "Content-Type: application/json" \
+     -d '{"license_key": "amb_live_..."}'
+   ```
+
+To request a commercial license key, visit: [https://amber-frontend-xyz.pages.dev/#contact](https://amber-frontend-xyz.pages.dev/#contact)
+
