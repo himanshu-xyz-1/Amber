@@ -13,19 +13,54 @@ from backend.app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+async def get_telegram_subscribers() -> set:
+    """Retrieves all registered Telegram chat IDs from Redis and config."""
+    subscribers = set()
+    if settings.TELEGRAM_CHAT_ID:
+        subscribers.add(str(settings.TELEGRAM_CHAT_ID).strip())
+
+    if settings.REDIS_ENABLED:
+        try:
+            import redis.asyncio as aioredis
+            r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+            saved = await r.smembers("amber:telegram_subscribers")
+            for s in saved:
+                if s:
+                    subscribers.add(str(s).strip())
+            await r.aclose()
+        except Exception as e:
+            logger.debug(f"Redis subscriber fetch skipped: {e}")
+    return subscribers
+
+
+async def register_telegram_subscriber(chat_id: int | str) -> bool:
+    """Registers a chat_id into the active subscriber broadcast list."""
+    if not settings.REDIS_ENABLED or not chat_id:
+        return False
+    try:
+        import redis.asyncio as aioredis
+        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        await r.sadd("amber:telegram_subscribers", str(chat_id).strip())
+        await r.aclose()
+        return True
+    except Exception as e:
+        logger.debug(f"Failed to register Telegram subscriber in Redis: {e}")
+        return False
+
+
 async def send_telegram_incident_alert(
     incident_data: Dict[str, Any],
     tool_invocation: Optional[Dict[str, Any]] = None
 ) -> bool:
     """
-    Sends an immediate Telegram alert to configured chat/channel.
-    Returns True if sent successfully, False otherwise.
+    Sends an immediate Telegram alert to all registered subscribers.
+    Returns True if sent to at least one subscriber, False otherwise.
     """
     token = settings.TELEGRAM_BOT_TOKEN
-    chat_id = settings.TELEGRAM_CHAT_ID
+    subscribers = await get_telegram_subscribers()
 
-    if not token or not chat_id:
-        logger.debug("Telegram Bot credentials not configured, skipping Telegram alert.")
+    if not token or not subscribers:
+        logger.debug("Telegram Bot credentials or subscribers not configured, skipping Telegram alert.")
         return False
 
     severity = incident_data.get("severity", "P1")
@@ -85,22 +120,28 @@ async def send_telegram_incident_alert(
 
     text_body = "\n".join(msg_lines)
     api_url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text_body,
-        "parse_mode": "HTML",
-        "reply_markup": {"inline_keyboard": inline_keyboard}
-    }
 
+    success_count = 0
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.post(api_url, json=payload)
-            if resp.status_code == 200:
-                logger.info(f"Successfully dispatched Telegram alert for Incident {incident_id}")
-                return True
-            else:
-                logger.warning(f"Telegram API returned non-200: {resp.status_code} - {resp.text}")
-                return False
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            for s_id in subscribers:
+                try:
+                    payload = {
+                        "chat_id": s_id,
+                        "text": text_body,
+                        "parse_mode": "HTML",
+                        "reply_markup": {"inline_keyboard": inline_keyboard}
+                    }
+                    resp = await client.post(api_url, json=payload)
+                    if resp.status_code == 200:
+                        success_count += 1
+                        logger.info(f"Dispatched Telegram alert for Incident {incident_id} to subscriber {s_id}")
+                    else:
+                        logger.warning(f"Telegram API error for subscriber {s_id}: {resp.status_code} - {resp.text}")
+                except Exception as sub_err:
+                    logger.warning(f"Failed to deliver to subscriber {s_id}: {sub_err}")
+
+        return success_count > 0
     except Exception as e:
-        logger.warning(f"Failed to deliver Telegram alert: {e}")
+        logger.warning(f"Failed to deliver Telegram alerts: {e}")
         return False

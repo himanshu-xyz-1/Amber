@@ -96,7 +96,9 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
 
             # 5. Handle Proposed Tools & Guardrail HITL Tokens
             proposed_tools = graph_result.get("proposed_tools", [])
-            requires_approval = graph_result.get("requires_approval", False)
+            requires_approval = graph_result.get("requires_approval", False) or any(
+                t.get("risk_level") == "HIGH" for t in proposed_tools
+            )
 
             if proposed_tools:
                 for tool in proposed_tools:

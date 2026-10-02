@@ -81,6 +81,10 @@ services:
       - ENVIRONMENT=production
       - HOST=0.0.0.0
       - PORT=8000
+    volumes:
+      - ./backend:/app/backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     networks:
@@ -102,6 +106,10 @@ services:
         condition: service_healthy
       backend:
         condition: service_started
+    volumes:
+      - ./backend:/app/backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-amber}:${POSTGRES_PASSWORD:-amber_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-amber_db}
       - REDIS_URL=redis://redis:6379/0

@@ -92,7 +92,7 @@ Rules:
 """
         try:
             res = client.models.generate_content(
-                model="gemini-3.8-flash",
+                model="gemini-2.5-flash",
                 contents=prompt
             )
             raw_text = res.text.strip()

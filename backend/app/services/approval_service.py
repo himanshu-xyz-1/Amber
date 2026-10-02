@@ -114,6 +114,30 @@ async def execute_tool_approval(
                 if invocation.status == InvocationStatus.EXECUTED:
                     incident.status = IncidentStatus.RESOLVED
                     incident.resolved_at = datetime.now(timezone.utc)
+                    # Notify target application / DubPilot of real-time remediation
+                    try:
+                        import httpx
+                        target_urls = [
+                            "http://127.0.0.1:8080/api/sre/remediate",
+                            "http://host.docker.internal:8080/api/sre/remediate",
+                        ]
+                        async with httpx.AsyncClient(timeout=3.0) as client:
+                            for t_url in target_urls:
+                                try:
+                                    await client.post(
+                                        t_url,
+                                        json={
+                                            "incident_id": str(incident.id),
+                                            "tool_name": invocation.tool_name,
+                                            "result": invocation.execution_result,
+                                            "approver": approver_label
+                                        }
+                                    )
+                                    break
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
                 elif invocation.status == InvocationStatus.FAILED:
                     incident.status = IncidentStatus.FAILED
 

@@ -409,10 +409,12 @@ async def handle_telegram_message(msg: Dict[str, Any], token: str):
     cmd = text.split()[0].lower()
 
     if cmd in ["/start", "/help"]:
+        from backend.app.integrations.telegram import register_telegram_subscriber
+        await register_telegram_subscriber(chat_id)
+
         welcome_text = (
             "⚡ <b>Amber SRE Autonomous Incident Engine</b>\n\n"
-            f"Welcome, @{html.escape(from_user)}! Amber continuously monitors your cloud perimeter, "
-            "correlates alert storms into singular causal graphs, and executes cryptographically bound remediations.\n\n"
+            f"Welcome, @{html.escape(from_user)}! You are now <b>automatically enrolled</b> to receive real-time SRE incident alerts and 1-click approvals for this cluster.\n\n"
             "<b>Available Commands:</b>\n"
             "• /status — Cluster health, DB/Redis latency, active incidents\n"
             "• /incidents — View latest active incidents & severity\n"

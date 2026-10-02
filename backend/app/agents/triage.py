@@ -131,7 +131,7 @@ Return your answer strictly in this valid JSON format with no markdown wrappers:
 """
         try:
             res = client.models.generate_content(
-                model="gemini-3.8-flash",
+                model="gemini-2.5-flash",
                 contents=prompt
             )
             raw_text = res.text.strip()
