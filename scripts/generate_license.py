@@ -52,6 +52,25 @@ TIER_CONFIG = {
             "air_gapped_runtime",
             "priority_sla"
         ]
+    },
+    "agency": {
+        "max_nodes": 500,
+        "max_services": 150,
+        "max_workspaces": 10,
+        "features": [
+            "triage",
+            "root_cause_analysis",
+            "post_mortem",
+            "slack_approvals",
+            "telegram_bot",
+            "whatsapp_bridge",
+            "auto_remediation",
+            "hitl_sha256",
+            "white_label",
+            "multi_tenant",
+            "custom_domain",
+            "sub_licensing"
+        ]
     }
 }
 
@@ -110,7 +129,7 @@ def generate_license(
 def main():
     parser = argparse.ArgumentParser(description="Issue cryptographically signed Amber SRE Enterprise License Keys")
     parser.add_argument("--org", required=True, help="Organization / Client Name (e.g., 'Swiggy', 'Acme Corp')")
-    parser.add_argument("--tier", default="autonomous", choices=["observe", "autonomous", "response"], help="Subscription Tier")
+    parser.add_argument("--tier", default="autonomous", choices=["observe", "autonomous", "response", "agency"], help="Subscription Tier")
     parser.add_argument("--days", type=int, default=30, help="License validity duration in days (e.g. 14, 30, 365)")
     parser.add_argument("--nodes", type=int, default=None, help="Custom node count override (optional)")
 
