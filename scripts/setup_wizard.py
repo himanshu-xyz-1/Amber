@@ -30,7 +30,9 @@ CYAN = "\033[0;36m"
 MAGENTA = "\033[0;35m"
 NC = "\033[0m"
 
-def print_banner():
+def print_banner(is_community: bool = False):
+    edition_title = f"{GREEN}{BOLD}[ Amber SRE — Free Community Edition Setup Wizard ]{NC}" if is_community else f"{BOLD}[ Amber Autonomous SRE Engine — Production Setup Wizard v1.2 ]{NC}"
+    edition_sub = f"{DIM}100% Self-Hosted • 5 Nodes • 3 Services • Local Ollama Compute • Zero License Key{NC}" if is_community else f"{DIM}Deterministic Incident Investigation, Root-Cause Proof & On-Call Automation{NC}"
     banner = f"""
 {CYAN}{BOLD}  █████╗ ███╗   ███╗██████╗ ███████╗██████╗ 
  ██╔══██╗████╗ ████║██╔══██╗██╔════╝██╔══██╗
@@ -38,8 +40,8 @@ def print_banner():
  ██╔══██║██║╚██╔╝██║██╔══██╗██╔══╝  ██╔══██╗
  ██║  ██║██║ ╚═╝ ██║██████╔╝███████╗██║  ██║{NC}
  
- {BOLD}[ Amber Autonomous SRE Engine — Production Setup Wizard v1.2 ]{NC}
- {DIM}Deterministic Incident Investigation, Root-Cause Proof & On-Call Automation{NC}
+ {edition_title}
+ {edition_sub}
 ----------------------------------------------------------------------"""
     print(banner)
 
@@ -161,7 +163,12 @@ def update_env_file(updates: Dict[str, str], env_path: str = ".env"):
         f.writelines(new_lines)
 
 def run_interactive_setup():
-    print_banner()
+    is_community = (
+        "--community" in sys.argv 
+        or os.getenv("AMBER_COMMUNITY") == "1" 
+        or os.getenv("AMBER_TIER", "").lower() == "community"
+    )
+    print_banner(is_community=is_community)
 
     # ──────────────────────────────────────────────────────────────────
     # [1/5] Hardware Assessment
@@ -186,35 +193,52 @@ def run_interactive_setup():
     # ──────────────────────────────────────────────────────────────────
     # [2/5] Registration & License Verification
     # ──────────────────────────────────────────────────────────────────
-    print(f"\n{BOLD}[2/5] Client Registration & License Verification{NC}")
-    client_name = input("  Enter your Full Name: ").strip() or "SRE Lead"
-    company_name = input("  Enter your Company / Team: ").strip() or "Engineering Team"
-    
-    print(f"\n  {DIM}Enter commercial license key (amb_live_...), or press ENTER to activate Free Community Edition:{NC}")
-    license_input = input(f"  {BOLD}License Key [{GREEN}Press ENTER for Free Community{NC}]: ").strip()
+    if is_community:
+        print(f"\n{BOLD}[2/5] Client Registration (Free Community Edition — No License Required){NC}")
+        client_name = input("  Enter your Full Name: ").strip() or "SRE Lead"
+        company_name = input("  Enter your Company / Team: ").strip() or "Engineering Team"
 
-    license_tier = "COMMUNITY"
-    max_nodes = 5
-    max_services = 3
-    license_key_to_save = ""
+        license_tier = "COMMUNITY"
+        max_nodes = 5
+        max_services = 3
+        license_key_to_save = ""
 
-    from backend.app.core.license import LicenseManager
-    if license_input:
-        validator = LicenseManager(token=license_input)
-        if validator.is_valid:
-            license_tier = validator.tier.upper()
-            max_nodes = validator.max_nodes
-            max_services = validator.max_services
-            license_key_to_save = license_input
-            print(f"  ✔ {GREEN}License Cryptographically Verified: {license_tier} TIER{NC}")
-            print(f"    Org: {validator.org} | Capacity: Up to {max_nodes} Nodes, {max_services} Services")
-        else:
-            print(f"  {RED}✖ Invalid or Expired License Key: {validator.error_message}{NC}")
-            print(f"  👉 Falling back safely to Free Community Edition.")
-            license_tier = "COMMUNITY"
+        print(f"\n  ✔ {GREEN}COMMUNITY EDITION ACTIVATED (Free Forever){NC}")
+        print(f"    • License: Zero Key Required ($0 Free Forever)")
+        print(f"    • Node Capacity: Up to 5 Cloud / K8s Nodes")
+        print(f"    • Service Capacity: Up to 3 Microservices")
+        print(f"    • Monthly Alerts: 100 alerts / month")
+        print(f"    • Compute: 100% Local Self-Hosted via Ollama")
+        print(f"    • Execution Mode: Read-Only Triage (Autonomous auto-fix requires Commercial tier)")
     else:
-        print(f"  ✔ {GREEN}Activated FREE COMMUNITY EDITION (Lifetime, 5 Nodes, 3 Services){NC}")
-        print(f"    100% Private Self-Hosted Compute with Zero Cloud Cost.")
+        print(f"\n{BOLD}[2/5] Commercial License Verification{NC}")
+        client_name = input("  Enter your Full Name: ").strip() or "SRE Lead"
+        company_name = input("  Enter your Company / Team: ").strip() or "Engineering Team"
+        
+        print(f"\n  {DIM}Enter your commercial license key (amb_live_...):{NC}")
+        license_input = input(f"  {BOLD}License Key: ").strip()
+
+        license_tier = "COMMUNITY"
+        max_nodes = 5
+        max_services = 3
+        license_key_to_save = ""
+
+        from backend.app.core.license import LicenseManager
+        if license_input:
+            validator = LicenseManager(token=license_input)
+            if validator.is_valid:
+                license_tier = validator.tier.upper()
+                max_nodes = validator.max_nodes
+                max_services = validator.max_services
+                license_key_to_save = license_input
+                print(f"  ✔ {GREEN}License Cryptographically Verified: {license_tier} TIER{NC}")
+                print(f"    Org: {validator.org} | Capacity: Up to {max_nodes} Nodes, {max_services} Services")
+            else:
+                print(f"  {RED}✖ Invalid or Expired License Key: {validator.error_message}{NC}")
+                print(f"  👉 Falling back safely to Free Community Edition.")
+                license_tier = "COMMUNITY"
+        else:
+            print(f"  {YELLOW}⚠ No license key provided. Falling back to Community Edition.{NC}")
 
     # ──────────────────────────────────────────────────────────────────
     # [3/5] Local Compute Engine (Ollama Reasoning Model)
@@ -381,9 +405,13 @@ def run_interactive_setup():
     env_updates = {
         "AMBER_CLIENT_NAME": client_name,
         "AMBER_COMPANY_NAME": company_name,
+        "AMBER_TIER": license_tier,
         "AMBER_LICENSE_TIER": license_tier,
         "AMBER_MAX_NODES": str(max_nodes),
         "AMBER_MAX_SERVICES": str(max_services),
+        "AMBER_MONTHLY_ALERT_LIMIT": "100" if is_community else "unlimited",
+        "AMBER_EXECUTION_MODE": "read_only" if is_community else "autonomous",
+        "AMBER_AUTONOMOUS_WRITE_ENABLED": "false" if is_community else "true",
     }
 
     if license_key_to_save:
@@ -438,12 +466,14 @@ def run_interactive_setup():
 
     print(f"""
 {GREEN}{BOLD}======================================================================
-🎉 AMBER SRE ENGINE SETUP COMPLETE & OPERATIONAL!
+🎉 AMBER {'COMMUNITY EDITION' if is_community else 'SRE ENGINE'} SETUP COMPLETE & OPERATIONAL!
 ======================================================================{NC}
 
   {BOLD}Dashboard:{NC}        http://localhost:8000
   {BOLD}API Docs:{NC}         http://localhost:8000/docs
   {BOLD}License Tier:{NC}     {license_tier} (Max {max_nodes} Nodes · {max_services} Services)
+  {BOLD}Alert Quota:{NC}      {'100 Alerts/month (Free Forever)' if is_community else 'Commercial Enterprise Quota'}
+  {BOLD}Execution Mode:{NC}   {'Read-Only Triage (Autonomous auto-fix requires Commercial tier)' if is_community else 'Autonomous Low-Risk Remediation'}
   {BOLD}Active Brain:{NC}     {selected_local_model if not skip_local_model else 'Heuristics'}
   {BOLD}On-Call Alerts:{NC}   {", ".join(active_notifications)}
 

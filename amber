@@ -22,10 +22,21 @@ CMD="${1:-help}"
 
 case "$CMD" in
     setup|init)
+        shift || true
         if [ -f ".venv/bin/python" ]; then
-            .venv/bin/python scripts/setup_wizard.py
+            .venv/bin/python scripts/setup_wizard.py "$@"
         elif command -v python3 &>/dev/null; then
-            python3 scripts/setup_wizard.py
+            python3 scripts/setup_wizard.py "$@"
+        else
+            echo -e "${RED}Python 3 is required to run the setup wizard.${NC}"
+            exit 1
+        fi
+        ;;
+    community)
+        if [ -f ".venv/bin/python" ]; then
+            .venv/bin/python scripts/setup_wizard.py --community
+        elif command -v python3 &>/dev/null; then
+            python3 scripts/setup_wizard.py --community
         else
             echo -e "${RED}Python 3 is required to run the setup wizard.${NC}"
             exit 1

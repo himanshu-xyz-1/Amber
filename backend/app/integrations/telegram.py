@@ -184,15 +184,18 @@ async def send_telegram_pairing_handshake(
     import socket
     detected_host = host_name or socket.gethostname() or "Production-Node-01"
 
+    tier_label = "COMMUNITY (Free Forever • Self-Hosted)" if tier.upper() == "COMMUNITY" else html.escape(tier.upper())
+    quota_label = f"Up to {max_nodes} Nodes · {max_services} Services · 100 Alerts/mo" if tier.upper() == "COMMUNITY" else f"Up to {max_nodes} Nodes · {max_services} Services"
+
     msg = (
         "⚡ <b>AMBER SRE — ENGINE PAIRED SUCCESSFULLY!</b>\n\n"
         f"👤 <b>Client Name:</b> {html.escape(client_name)}\n"
         f"🏢 <b>Company / Team:</b> {html.escape(company)}\n"
         f"🖥️ <b>Host / Cluster:</b> <code>{html.escape(detected_host)}</code>\n"
-        f"💎 <b>License Tier:</b> {html.escape(tier.upper())}\n"
-        f"📊 <b>Quota Limit:</b> Up to {max_nodes} Nodes · {max_services} Services\n"
+        f"💎 <b>License Tier:</b> {tier_label}\n"
+        f"📊 <b>Quota Limit:</b> {quota_label}\n"
         "⏱️ <b>Status:</b> Active & Monitoring\n\n"
-        "🔒 <i>Your device is now bound to this instance. Real-time incident alerts and 1-click approvals will be delivered directly to this chat.</i>"
+        "🔒 <i>Your device is now securely paired. Real-time incident alerts and root-cause proof will be dispatched directly to this chat.</i>"
     )
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
