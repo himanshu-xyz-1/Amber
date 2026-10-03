@@ -199,17 +199,20 @@ def run_interactive_setup():
         company_name = input("  Enter your Company / Team: ").strip() or "Engineering Team"
 
         license_tier = "COMMUNITY"
-        max_nodes = 5
-        max_services = 3
+        max_nodes = 50
+        max_services = 15
+        monthly_alert_limit = 1000
         license_key_to_save = ""
 
         print(f"\n  ✔ {GREEN}COMMUNITY EDITION ACTIVATED (Free Forever){NC}")
         print(f"    • License: Zero Key Required ($0 Free Forever)")
-        print(f"    • Node Capacity: Up to 5 Cloud / K8s Nodes")
-        print(f"    • Service Capacity: Up to 3 Microservices")
-        print(f"    • Monthly Alerts: 100 alerts / month")
-        print(f"    • Compute: 100% Local Self-Hosted via Ollama")
-        print(f"    • Execution Mode: Read-Only Triage (Autonomous auto-fix requires Commercial tier)")
+        print(f"    • Node Capacity: Up to 50 Cloud / K8s Nodes")
+        print(f"    • Service Capacity: Up to 15 Production Microservices")
+        print(f"    • Monthly Alerts: 1,000 alerts / month")
+        print(f"    • Features Included: Alert Storm Deduplication, Deterministic Root Cause,")
+        print(f"                         Memory Leak & Deadlock Tracing, Post-Mortems, 50+ Runbooks")
+        print(f"    • Compute: 100% Local Self-Hosted via Ollama (Zero Telemetry Egress)")
+        print(f"    • Execution Mode: 100% Read-Only IAM (0 Writes)")
     else:
         print(f"\n{BOLD}[2/5] Commercial License Verification{NC}")
         client_name = input("  Enter your Full Name: ").strip() or "SRE Lead"
@@ -409,7 +412,7 @@ def run_interactive_setup():
         "AMBER_LICENSE_TIER": license_tier,
         "AMBER_MAX_NODES": str(max_nodes),
         "AMBER_MAX_SERVICES": str(max_services),
-        "AMBER_MONTHLY_ALERT_LIMIT": "100" if is_community else "unlimited",
+        "AMBER_MONTHLY_ALERT_LIMIT": "1000" if is_community else "unlimited",
         "AMBER_EXECUTION_MODE": "read_only" if is_community else "autonomous",
         "AMBER_AUTONOMOUS_WRITE_ENABLED": "false" if is_community else "true",
     }

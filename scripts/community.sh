@@ -8,7 +8,8 @@
 # Features:
 #   • 100% Self-Hosted & Free Forever ($0 Cloud Cost)
 #   • Zero License Key Required
-#   • Pre-configured for 5 Nodes, 3 Services, 100 Alerts/mo
+#   • Pre-configured for 50 Nodes, 15 Services, 1,000 Alerts/mo
+#   • Full Incident Intelligence, Root-Cause Proof & 50+ Runbooks
 #   • Local Ollama AI Setup & On-Call Alert Pairing
 # ==============================================================================
 set -euo pipefail
@@ -25,7 +26,7 @@ error() { echo -e "${RED}[Amber ERROR]${NC} $*"; exit 1; }
 echo ""
 echo -e "${CYAN}${BOLD}======================================================================${NC}"
 echo -e "${CYAN}${BOLD}  ⚡ AMBER SRE — FREE COMMUNITY EDITION INSTALLER${NC}"
-echo -e "  100% Self-Hosted • 5 Nodes • 3 Services • Local Ollama Compute"
+echo -e "  100% Self-Hosted • Up to 50 Nodes • 15 Services • 1,000 Alerts/mo"
 echo -e "${CYAN}${BOLD}======================================================================${NC}"
 echo ""
 

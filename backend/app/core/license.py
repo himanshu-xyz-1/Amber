@@ -37,9 +37,18 @@ class LicenseManager:
         self.status: str = "community"  # "active", "expired", "invalid", "community"
         self.org: str = "Community Edition"
         self.tier: str = "community"
-        self.max_nodes: int = 5
-        self.max_services: int = 3
-        self.features: List[str] = ["triage", "read_only"]
+        self.max_nodes: int = 50
+        self.max_services: int = 15
+        self.features: List[str] = [
+            "triage", 
+            "read_only", 
+            "alert_deduplication", 
+            "root_cause_analysis", 
+            "memory_leak_tracing", 
+            "deadlock_detection", 
+            "post_mortem_generator", 
+            "standard_runbooks"
+        ]
         self.expires_at: Optional[datetime] = None
         self.days_remaining: int = 0
         self.error_message: Optional[str] = None
@@ -182,8 +191,7 @@ class LicenseManager:
             print("\n" + "=" * 70)
             print("🌱 AMBER COMMUNITY EDITION (FREE FOREVER)")
             print(f"📦 Quota: Up to {self.max_nodes} Nodes | {self.max_services} Services")
-            print("⚡ Self-Hosted Compute: 100% Private (Local Ollama / BYO API Key)")
-            print(f"👉 Need > 5 nodes or automated production rollbacks? Upgrade at {contact_url}")
+            print(f"👉 Need > {self.max_nodes} nodes or automated 1-click rollbacks? Upgrade at {contact_url}")
             print("=" * 70 + "\n")
 
 
