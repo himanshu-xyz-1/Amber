@@ -29,7 +29,7 @@ async def submit_approval(
             tool_invocation_id=str(request.tool_invocation_id),
             action=request.action,
             db=db,
-            approved_by_id=request.approved_by_id,
+            approved_by_id=current_user.user_id or request.approved_by_id,
             payload_sha256=request.payload_sha256,
             approver_label=current_user.identity,
         )

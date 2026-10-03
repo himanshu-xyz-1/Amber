@@ -98,5 +98,105 @@
     "expected_severity": "P2",
     "expected_root_cause_type": "consumer_lag",
     "expected_tool": "check_service_health"
+  },
+  {
+    "id": "inc-11",
+    "title": "Ingress Controller 502 Bad Gateway Spike on Payment Service",
+    "message": "Nginx Ingress returning 502 Bad Gateway for 45% of incoming payments.",
+    "service": "ingress-nginx",
+    "source": "prometheus",
+    "expected_severity": "P0",
+    "expected_root_cause_type": "high_latency",
+    "expected_tool": "check_service_health"
+  },
+  {
+    "id": "inc-12",
+    "title": "PostgreSQL Deadlock detected on inventory table",
+    "message": "Deadlock detected between backend transaction PIDs 1204 and 1209 updating stock.",
+    "service": "inventory-db",
+    "source": "pagerduty",
+    "expected_severity": "P1",
+    "expected_root_cause_type": "database_locks",
+    "expected_tool": "kill_db_connections"
+  },
+  {
+    "id": "inc-13",
+    "title": "Elasticsearch Cluster Health RED (Unassigned Shards)",
+    "message": "Primary shards unassigned on hot node data-03. Search queries failing.",
+    "service": "elasticsearch",
+    "source": "cloudwatch",
+    "expected_severity": "P1",
+    "expected_root_cause_type": "batch_job_failure",
+    "expected_tool": "check_service_health"
+  },
+  {
+    "id": "inc-14",
+    "title": "Deployment Failed: ErrImagePull on auth-service:v2.4.1",
+    "message": "Failed to pull image registry.internal/auth:v2.4.1. Manifest unknown.",
+    "service": "auth-service",
+    "source": "prometheus",
+    "expected_severity": "P1",
+    "expected_root_cause_type": "container_oom",
+    "expected_tool": "rollback_deployment"
+  },
+  {
+    "id": "inc-15",
+    "title": "DNS CoreDNS SERVFAIL in production cluster",
+    "message": "Internal DNS requests failing with SERVFAIL. Cluster-wide upstream resolution degraded.",
+    "service": "coredns",
+    "source": "datadog",
+    "expected_severity": "P0",
+    "expected_root_cause_type": "high_latency",
+    "expected_tool": "check_service_health"
+  },
+  {
+    "id": "inc-16",
+    "title": "RabbitMQ High Memory Watermark Exceeded",
+    "message": "RabbitMQ node broker-01 exceeded memory high watermark. Flow control blocking publishers.",
+    "service": "rabbitmq-broker",
+    "source": "prometheus",
+    "expected_severity": "P1",
+    "expected_root_cause_type": "memory_fragmentation",
+    "expected_tool": "check_service_health"
+  },
+  {
+    "id": "inc-17",
+    "title": "JVM Full GC Pause Exceeded 6,000ms on order-service",
+    "message": "G1GC pause time reached 6,240ms causing health check timeout and thread exhaustion.",
+    "service": "order-service",
+    "source": "datadog",
+    "expected_severity": "P2",
+    "expected_root_cause_type": "high_latency",
+    "expected_tool": "fetch_pod_logs"
+  },
+  {
+    "id": "inc-18",
+    "title": "AWS S3 Slow Down 503 Rate Limit during asset sync",
+    "message": "S3 rate limit exceeded on bucket static-assets-prod. PUT operations throttling.",
+    "service": "asset-syncer",
+    "source": "cloudwatch",
+    "expected_severity": "P3",
+    "expected_root_cause_type": "batch_job_failure",
+    "expected_tool": "fetch_pod_logs"
+  },
+  {
+    "id": "inc-19",
+    "title": "High CPU Throttling (>90%) on frontend cgroup quota",
+    "message": "Frontend pod frontend-app-689d cgroup throttled for 94% of periods in 5m window.",
+    "service": "frontend-app",
+    "source": "prometheus",
+    "expected_severity": "P2",
+    "expected_root_cause_type": "high_latency",
+    "expected_tool": "check_service_health"
+  },
+  {
+    "id": "inc-20",
+    "title": "Immediate TLS Handshake Error: Certificate Expired",
+    "message": "Public gateway rejected incoming SSL requests. x509 certificate expired at 00:00 UTC.",
+    "service": "api-gateway",
+    "source": "pagerduty",
+    "expected_severity": "P0",
+    "expected_root_cause_type": "informational_cert",
+    "expected_tool": "check_service_health"
   }
 ]

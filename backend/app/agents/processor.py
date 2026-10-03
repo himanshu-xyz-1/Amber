@@ -75,25 +75,26 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
             incident.status = IncidentStatus.INVESTIGATING
             await session.commit()
 
-            # 2.5 License Infrastructure Limit Runtime Enforcement
+            # 2.5 License Infrastructure Limit Runtime Check (30-day active window)
             from backend.app.core.license import license_manager
+            from backend.app.core.k8s import get_cluster_node_count
             from sqlalchemy import distinct, func
             
+            thirty_days_ago = start_time - timedelta(days=30)
             services_count_res = await session.execute(
                 select(func.count(distinct(Incident.source_service)))
+                .filter(Incident.created_at >= thirty_days_ago)
             )
             active_services_count = services_count_res.scalar() or 0
+            live_node_count = get_cluster_node_count()
             
             limits_ok, limit_err = license_manager.check_infrastructure_limits(
+                node_count=live_node_count,
                 service_count=active_services_count
             )
-            if not limits_ok:
-                logger.warning(f"[LICENSE LIMIT ENFORCED] {limit_err}")
-                incident.status = IncidentStatus.TRIGGERED
-                incident.root_cause_summary = f"[COMMERCIAL LICENSE LIMIT] {limit_err}. Autonomous agent remediation locked."
-                incident.remediation_plan = {"error": limit_err, "license_tier": license_manager.tier}
-                await session.commit()
-                return
+            license_limits_exceeded = not limits_ok
+            if license_limits_exceeded:
+                logger.warning(f"[LICENSE LIMIT ENFORCED] {limit_err} - Diagnosis active; automated remediation locked.")
 
             # 3. Execute LangGraph Agent Pipeline
             graph_result = await run_incident_graph(
@@ -151,6 +152,11 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
                                 logger.warning(f"Autonomous tool execution error for {tool_name}: {ex}")
                                 exec_status = InvocationStatus.FAILED
 
+                    exec_error = None
+                    if license_limits_exceeded and risk_level == RiskLevel.HIGH:
+                        exec_status = InvocationStatus.FAILED
+                        exec_error = f"[LICENSE LIMIT] Infrastructure capacity exceeded ({active_services_count} active services in last 30 days). High-risk remediation locked. Enterprise upgrade required."
+
                     tool_inv = ToolInvocation(
                         incident_id=incident.id,
                         tool_name=tool_name,
@@ -161,6 +167,7 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
                         payload_sha256=payload_sha256,
                         approval_expires_at=approval_expires if risk_level == RiskLevel.HIGH else None,
                         execution_result=exec_result,
+                        error_message=exec_error,
                         health_check_passed=health_passed,
                         executed_at=datetime.now(timezone.utc) if risk_level == RiskLevel.LOW else None,
                         created_at=start_time

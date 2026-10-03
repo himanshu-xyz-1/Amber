@@ -202,7 +202,7 @@ if [[ -n "$OFFLINE_BUNDLE" ]]; then
         sha256sum -c "${OFFLINE_BUNDLE}.sha256" || error "SHA-256 checksum verification failed for bundle!"
         info "Checksum verified: Integrity OK"
     else
-        warn "No .sha256 checksum signature file found alongside bundle."
+        error "Security refusal: Missing mandatory '${OFFLINE_BUNDLE}.sha256' integrity checksum file."
     fi
     mkdir -p "$AMBER_DIR"
     tar -xzf "$OFFLINE_BUNDLE" -C "$AMBER_DIR" --strip-components=1
@@ -214,11 +214,11 @@ else
         info "Updating existing Amber installation..."
         cd "$AMBER_DIR"
         git fetch origin --tags 2>/dev/null || true
-        git checkout "$AMBER_VERSION" 2>/dev/null || git pull origin "$AMBER_VERSION" 2>/dev/null || true
+        git checkout "$AMBER_VERSION" 2>/dev/null || git checkout tags/"$AMBER_VERSION" 2>/dev/null || git pull origin "$AMBER_VERSION" 2>/dev/null || true
     else
         info "Cloning Amber SRE repository (pinned version: ${AMBER_VERSION})..."
-        git clone --depth 1 --branch "$AMBER_VERSION" "$REPO_URL" "$AMBER_DIR" 2>/dev/null || \
-        git clone --depth 1 "$REPO_URL" "$AMBER_DIR"
+        git clone --depth 1 --branch "$AMBER_VERSION" "$REPO_URL" "$AMBER_DIR" || \
+        error "Failed to clone verified release tag '${AMBER_VERSION}' from ${REPO_URL}. Unpinned clone refused."
         cd "$AMBER_DIR"
     fi
 fi

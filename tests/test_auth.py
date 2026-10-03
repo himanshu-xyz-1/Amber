@@ -131,3 +131,43 @@ async def test_unregistered_approver_email_rejected_in_production(monkeypatch):
     assert res.status_code == 403
     assert "Unregistered approver identity" in res.json()["detail"]
 
+
+@pytest.mark.asyncio
+async def test_per_user_api_key_authentication():
+    """Verify that scoped personal user API keys authenticate against users table without master key."""
+    from backend.app.core.database import AsyncSessionLocal
+    from backend.app.models.user import User, UserRole
+    from backend.app.auth.security import hash_api_key
+
+    import secrets
+    import uuid
+
+    # Dynamically generated mock tokens for test execution (prevents static scanner false positives)
+    mock_dynamic_token = secrets.token_hex(16)
+    key_hash = hash_api_key(mock_dynamic_token)
+    unique_email = f"sre_user_{uuid.uuid4().hex[:8]}@example.internal"
+
+    async with AsyncSessionLocal() as session:
+        user = User(
+            email=unique_email,
+            full_name="Ephemeral Test SRE",
+            role=UserRole.SRE,
+            api_key_hash=key_hash,
+            is_active=True
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+    client = TestClient(app)
+
+    # 1. Successful authentication using ephemeral mock API key
+    res = client.get("/api/v1/approvals/pending", headers={"X-API-Key": mock_dynamic_token})
+    assert res.status_code == 200
+
+    # 2. Rejection of invalid ephemeral key
+    invalid_token = secrets.token_hex(16)
+    res_bad = client.get("/api/v1/approvals/pending", headers={"X-API-Key": invalid_token})
+    assert res_bad.status_code == 401
+
+

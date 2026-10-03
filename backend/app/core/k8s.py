@@ -474,3 +474,16 @@ async def k8s_fetch_pod_logs(
             f"Failed to fetch logs for pod '{pod_name}': {e.reason}",
             status_code=e.status
         )
+
+
+def get_cluster_node_count() -> int:
+    """Returns the total number of worker nodes in the live Kubernetes cluster."""
+    try:
+        core_api, _ = init_k8s_client()
+        if core_api:
+            nodes = core_api.list_node(timeout_seconds=2)
+            return len(nodes.items)
+    except Exception as e:
+        logger.debug(f"Could not retrieve Kubernetes node count: {e}")
+    return 0
+
