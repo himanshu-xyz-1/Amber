@@ -35,5 +35,16 @@ async def check_readiness(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
             redis_status = "disconnected"
     else:
         redis_status = "disabled"
-    
-    return {"status": "ready", "database": db_status, "redis": redis_status}
+
+    # Check Kubernetes readiness
+    from backend.app.core.k8s import is_k8s_available
+    from backend.app.core.license import license_manager
+    k8s_status = "connected" if is_k8s_available() else "standby"
+
+    return {
+        "status": "ready",
+        "database": db_status,
+        "redis": redis_status,
+        "kubernetes": k8s_status,
+        "license": license_manager.status,
+    }

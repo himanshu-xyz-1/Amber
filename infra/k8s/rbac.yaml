@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: amber-operator
+  namespace: amber-sre
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: amber-operator-role
+rules:
+  # Pod operations & log inspection
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/status"]
+    verbs: ["get", "list", "watch", "delete"]
+  # Services and Endpoints for health checks
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  # Deployments and ReplicaSets for Rollout Restart and Rollback
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/rollback", "deployments/scale", "deployments/status"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: amber-operator-binding
+subjects:
+  - kind: ServiceAccount
+    name: amber-operator
+    namespace: amber-sre
+roleRef:
+  kind: ClusterRole
+  name: amber-operator-role
+  apiGroup: rbac.authorization.k8s.io

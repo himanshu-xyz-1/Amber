@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -138,6 +138,20 @@ class LicenseManager:
         if not self.is_valid:
             return False
         return feature in self.features or "*" in self.features
+
+    def check_infrastructure_limits(
+        self,
+        node_count: Optional[int] = None,
+        service_count: Optional[int] = None
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Enforces licensed node and service limits.
+        """
+        if node_count is not None and node_count > self.max_nodes:
+            return False, f"Infrastructure node limit exceeded: {node_count} nodes detected (licensed max: {self.max_nodes})."
+        if service_count is not None and service_count > self.max_services:
+            return False, f"Service limit exceeded: {service_count} monitored services detected (licensed max: {self.max_services})."
+        return True, None
 
     def get_license_details(self) -> Dict[str, Any]:
         return {

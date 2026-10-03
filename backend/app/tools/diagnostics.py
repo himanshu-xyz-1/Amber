@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from sqlalchemy import text
 from backend.app.core.database import AsyncSessionLocal
+from backend.app.core.k8s import k8s_fetch_pod_logs, K8sExecutionError
 from backend.app.core.sanitizer import redact_string, sanitize_payload
 from backend.app.tools.base import BaseTool, RiskLevel, ToolResult, tool_registry
 
@@ -158,26 +159,25 @@ class FetchPodLogs(BaseTool):
         tail_lines = kwargs.get("tail_lines", 50)
         namespace = kwargs.get("namespace", "production")
 
-        # In production environments with Kubernetes API, this queries /api/v1/namespaces/{namespace}/pods/{pod_name}/log
-        raw_logs = [
-            f"[2026-10-02T02:14:02Z] [WARN] [pg_pool] Connection pool nearing saturation: 94/100 active connections",
-            f"[2026-10-02T02:14:05Z] [ERROR] [api-gateway] Upstream connection timeout (504 Gateway Timeout) on /v1/checkout",
-            f"[2026-10-02T02:14:07Z] [ERROR] [payment-svc] Postgres query lock wait timeout on table 'payment_ledger'",
-            f"[2026-10-02T02:14:08Z] [ERROR] [auth-svc] Failed to verify token: secret=AKIAIOSFODNN7EXAMPLE (sanitizer engaged)"
-        ]
-
-        # Apply strict in-memory sanitization
-        sanitized_logs = [redact_string(line) for line in raw_logs[-tail_lines:]]
-
-        data = {
-            "pod_name": pod_name,
-            "namespace": namespace,
-            "tail_lines": len(sanitized_logs),
-            "logs": sanitized_logs
-        }
-
-        execution_time_ms = (time.time() - start_time) * 1000
-        return ToolResult(success=True, data=data, error=None, execution_time_ms=execution_time_ms)
+        try:
+            raw_logs = await k8s_fetch_pod_logs(pod_name=pod_name, namespace=namespace, tail_lines=tail_lines)
+            sanitized_logs = [redact_string(line) for line in raw_logs]
+            data = {
+                "pod_name": pod_name,
+                "namespace": namespace,
+                "tail_lines": len(sanitized_logs),
+                "logs": sanitized_logs
+            }
+            execution_time_ms = (time.time() - start_time) * 1000
+            return ToolResult(success=True, data=data, error=None, execution_time_ms=execution_time_ms)
+        except K8sExecutionError as e:
+            execution_time_ms = (time.time() - start_time) * 1000
+            return ToolResult(
+                success=False,
+                data={"pod_name": pod_name, "namespace": namespace, "logs": []},
+                error=str(e.message),
+                execution_time_ms=execution_time_ms
+            )
 
 
 class CheckServiceHealth(BaseTool):

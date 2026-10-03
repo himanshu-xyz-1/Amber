@@ -103,3 +103,31 @@ def test_license_activate_api():
     assert good_res.json()["success"] is True
     assert good_res.json()["details"]["org"] == "API Test Corp"
 
+
+def test_infrastructure_limits_enforcement():
+    token, _ = generate_license(
+        org="Scale Corp",
+        tier="autonomous",
+        days=30,
+        custom_nodes=100,
+        custom_services=20,
+        key_path=DEFAULT_KEY_PATH
+    )
+    manager = LicenseManager(token=token)
+    assert manager.is_valid is True
+
+    # Under limit
+    ok, err = manager.check_infrastructure_limits(node_count=50, service_count=10)
+    assert ok is True
+    assert err is None
+
+    # Over node limit
+    ok, err = manager.check_infrastructure_limits(node_count=150, service_count=10)
+    assert ok is False
+    assert "node limit exceeded" in err.lower()
+
+    # Over service limit
+    ok, err = manager.check_infrastructure_limits(node_count=50, service_count=25)
+    assert ok is False
+    assert "service limit exceeded" in err.lower()
+

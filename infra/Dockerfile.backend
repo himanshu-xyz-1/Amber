@@ -28,9 +28,11 @@ ENV PATH=/home/amber/.local/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Copy application source code
+# Copy application source code and migrations
 COPY --chown=amber:amber backend /app/backend
 COPY --chown=amber:amber data /app/data
+COPY --chown=amber:amber alembic /app/alembic
+COPY --chown=amber:amber alembic.ini /app/alembic.ini
 
 USER amber
 

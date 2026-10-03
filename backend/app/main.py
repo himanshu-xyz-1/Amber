@@ -20,8 +20,25 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up Amber API...")
     license_manager.print_startup_banner()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    
+    # 1. Run database schema migrations
+    try:
+        import os
+        import asyncio
+        if os.path.exists("alembic.ini"):
+            from alembic.config import Config
+            from alembic import command
+            alembic_cfg = Config("alembic.ini")
+            alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+            await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
+            logger.info("Database schema migrations successfully applied (Alembic head).")
+        else:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        logger.warning(f"Alembic auto-migration skipped or failed ({e}). Falling back to Base.metadata.create_all.")
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
     yield
     # Shutdown

@@ -89,6 +89,7 @@ def generate_license(
     tier: str,
     days: int,
     custom_nodes: int = None,
+    custom_services: int = None,
     key_path: Path = DEFAULT_KEY_PATH
 ) -> str:
     priv_key = load_master_private_key(key_path)
@@ -103,12 +104,13 @@ def generate_license(
 
     tier_defaults = TIER_CONFIG[tier_lower]
     max_nodes = custom_nodes or tier_defaults["max_nodes"]
+    max_services = custom_services or tier_defaults["max_services"]
 
     payload = {
         "org": org,
         "tier": tier_lower,
         "max_nodes": max_nodes,
-        "max_services": tier_defaults["max_services"],
+        "max_services": max_services,
         "features": tier_defaults["features"],
         "issued_at": now.isoformat(),
         "expires_at": expires.isoformat(),

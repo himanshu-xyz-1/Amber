@@ -16,6 +16,7 @@ spec:
       labels:
         app: amber-backend
     spec:
+      serviceAccountName: amber-operator
       containers:
         - name: amber-api
           image: ghcr.io/himanshu-xyz-1/amber-backend:latest

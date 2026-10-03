@@ -45,7 +45,11 @@ async def execute_tool_approval(
     except ValueError:
         raise ApprovalExecutionError("Invalid tool invocation UUID format.", status_code=400)
 
-    result = await db.execute(select(ToolInvocation).filter(ToolInvocation.id == inv_uuid))
+    result = await db.execute(
+        select(ToolInvocation)
+        .filter(ToolInvocation.id == inv_uuid)
+        .with_for_update()
+    )
     invocation = result.scalar_one_or_none()
 
     if not invocation:
@@ -125,7 +129,11 @@ async def execute_tool_approval(
 
         # Update parent incident if remediation was executed
         if invocation.incident_id:
-            inc_res = await db.execute(select(Incident).filter(Incident.id == invocation.incident_id))
+            inc_res = await db.execute(
+                select(Incident)
+                .filter(Incident.id == invocation.incident_id)
+                .with_for_update()
+            )
             incident = inc_res.scalar_one_or_none()
             if incident:
                 if invocation.status == InvocationStatus.EXECUTED:
@@ -141,7 +149,11 @@ async def execute_tool_approval(
     elif action == "reject":
         invocation.status = InvocationStatus.REJECTED
         if invocation.incident_id:
-            inc_res = await db.execute(select(Incident).filter(Incident.id == invocation.incident_id))
+            inc_res = await db.execute(
+                select(Incident)
+                .filter(Incident.id == invocation.incident_id)
+                .with_for_update()
+            )
             incident = inc_res.scalar_one_or_none()
             if incident and incident.status == IncidentStatus.PROPOSED:
                 incident.status = IncidentStatus.ESCALATED
