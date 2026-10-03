@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Amber SRE Engine — Master CLI Controller
+#
+# Commands:
+#   ./amber setup        Run the interactive onboarding wizard
+#   ./amber status       Check license, health, and active notification channels
+#   ./amber start        Start all cluster services (Postgres, Redis, Backend)
+#   ./amber stop         Stop all cluster services
+#   ./amber restart      Restart cluster services
+#   ./amber logs         Follow live incident triage and engine logs
+#   ./amber test-alert   Inject a test P1 incident to verify Telegram/Slack alerts
+# ==============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
+
+CMD="${1:-help}"
+
+case "$CMD" in
+    setup|init)
+        if [ -f ".venv/bin/python" ]; then
+            .venv/bin/python scripts/setup_wizard.py
+        elif command -v python3 &>/dev/null; then
+            python3 scripts/setup_wizard.py
+        else
+            echo -e "${RED}Python 3 is required to run the setup wizard.${NC}"
+            exit 1
+        fi
+        ;;
+    status)
+        echo -e "${CYAN}Checking Amber SRE Engine Status...${NC}"
+        if [ -f ".venv/bin/python" ]; then
+            .venv/bin/python scripts/activate_key.py --status
+        elif command -v python3 &>/dev/null; then
+            python3 scripts/activate_key.py --status
+        fi
+        if curl -s http://127.0.0.1:8000/api/v1/health/readiness 2>/dev/null | grep -q "ready"; then
+            echo -e "${GREEN}✔ Local API Gateway: Online at http://localhost:8000${NC}"
+        else
+            echo -e "${YELLOW}ℹ Local API Gateway: Offline or starting up${NC}"
+        fi
+        ;;
+    start)
+        echo -e "${GREEN}Starting Amber SRE containers...${NC}"
+        docker compose up -d
+        echo -e "${GREEN}✔ Services started. View dashboard at http://localhost:8000${NC}"
+        ;;
+    stop)
+        echo -e "${YELLOW}Stopping Amber SRE containers...${NC}"
+        docker compose down
+        echo -e "${GREEN}✔ Services stopped.${NC}"
+        ;;
+    restart)
+        echo -e "${YELLOW}Restarting Amber SRE containers...${NC}"
+        docker compose restart
+        echo -e "${GREEN}✔ Services restarted.${NC}"
+        ;;
+    logs)
+        docker compose logs -f backend
+        ;;
+    test-alert)
+        echo -e "${CYAN}Injecting simulated P1 Postgres Connection Pool Exhaustion...${NC}"
+        if [ -f ".venv/bin/python" ]; then
+            .venv/bin/python scripts/simulate_incident.py --scenario postgres-pool
+        else
+            python3 scripts/simulate_incident.py --scenario postgres-pool
+        fi
+        ;;
+    *)
+        echo ""
+        echo -e "${CYAN}Amber SRE Engine — Command Line Interface${NC}"
+        echo "Usage: ./amber <command>"
+        echo ""
+        echo "Commands:"
+        echo "  setup        Run interactive setup wizard (Community & Commercial)"
+        echo "  status       Display current license quota and system health"
+        echo "  start        Launch all background services via Docker Compose"
+        echo "  stop         Stop all background services"
+        echo "  restart      Restart background services"
+        echo "  logs         Tail live SRE investigation and triage logs"
+        echo "  test-alert   Trigger a simulated P1 outage to test Telegram/Slack push"
+        echo ""
+        exit 0
+        ;;
+esac

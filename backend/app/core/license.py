@@ -170,7 +170,7 @@ class LicenseManager:
 
     def print_startup_banner(self):
         """Displays informative ASCII status banner at system boot."""
-        contact_url = os.getenv("AMBER_CONTACT_URL", "https://amber-frontend-xyz.pages.dev/#contact")
+        contact_url = os.getenv("AMBER_CONTACT_URL", "https://ambersre.xyz")
         if self.is_valid:
             print("\n" + "=" * 70)
             print(f"💎 AMBER ENTERPRISE ACTIVE: Licensed to '{self.org}'")
@@ -180,12 +180,10 @@ class LicenseManager:
             print("=" * 70 + "\n")
         else:
             print("\n" + "=" * 70)
-            print("🔐 AMBER ENTERPRISE KEY REQUIRED")
-            print("⚠️  Running in Community Edition (Unregistered / Expired)")
-            print(f"ℹ️  Status: {self.error_message}")
-            print("🔒 Multi-Channel Notifications (Slack, Telegram, WhatsApp) are LOCKED.")
-            print(f"👉 GET YOUR KEY: {contact_url}")
-            print("💡 To activate, set AMBER_LICENSE_KEY in your .env or POST to /api/v1/license/activate")
+            print("🌱 AMBER COMMUNITY EDITION (FREE FOREVER)")
+            print(f"📦 Quota: Up to {self.max_nodes} Nodes | {self.max_services} Services")
+            print("⚡ Self-Hosted Compute: 100% Private (Local Ollama / BYO API Key)")
+            print(f"👉 Need > 5 nodes or automated production rollbacks? Upgrade at {contact_url}")
             print("=" * 70 + "\n")
 
 

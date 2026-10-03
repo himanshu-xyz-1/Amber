@@ -240,10 +240,18 @@ if [ ! -f .env ]; then
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# Step 7: Interactive LLM selection (unless --no-llm or --offline with bundle)
+# Step 7: Interactive Setup Wizard (Community / Commercial, Ollama, Notifications)
 # ──────────────────────────────────────────────────────────────────────
 if [[ "$SKIP_LLM" == false ]]; then
-    select_llm
+    if [ -f "scripts/setup_wizard.py" ]; then
+        if [ -e /dev/tty ]; then
+            python3 scripts/setup_wizard.py < /dev/tty || python3 scripts/setup_wizard.py || select_llm
+        else
+            python3 scripts/setup_wizard.py || select_llm
+        fi
+    else
+        select_llm
+    fi
 fi
 
 # ──────────────────────────────────────────────────────────────────────

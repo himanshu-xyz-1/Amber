@@ -5,7 +5,7 @@ Dispatches instant on-call mobile push alerts with inline action buttons via Tel
 
 import html
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 import httpx
 
 from backend.app.core.config import settings
@@ -161,3 +161,59 @@ async def send_telegram_incident_alert(
         print(f"❌ [AMBER TELEGRAM] Top-level dispatch failure: {e}", flush=True)
         logger.warning(f"Failed to deliver Telegram alerts: {e}")
         return False
+
+
+async def send_telegram_pairing_handshake(
+    chat_id: int | str,
+    client_name: str,
+    company: str,
+    tier: str = "Community",
+    max_nodes: int = 5,
+    max_services: int = 3,
+    host_name: Optional[str] = None,
+    bot_token: Optional[str] = None
+) -> Tuple[bool, Optional[str]]:
+    """
+    Sends an immediate pairing confirmation handshake to verify a newly connected Telegram Receiver ID.
+    Returns (success, error_or_message).
+    """
+    token = bot_token or settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        return False, "TELEGRAM_BOT_TOKEN not configured."
+
+    import socket
+    detected_host = host_name or socket.gethostname() or "Production-Node-01"
+
+    msg = (
+        "⚡ <b>AMBER SRE — ENGINE PAIRED SUCCESSFULLY!</b>\n\n"
+        f"👤 <b>Client Name:</b> {html.escape(client_name)}\n"
+        f"🏢 <b>Company / Team:</b> {html.escape(company)}\n"
+        f"🖥️ <b>Host / Cluster:</b> <code>{html.escape(detected_host)}</code>\n"
+        f"💎 <b>License Tier:</b> {html.escape(tier.upper())}\n"
+        f"📊 <b>Quota Limit:</b> Up to {max_nodes} Nodes · {max_services} Services\n"
+        "⏱️ <b>Status:</b> Active & Monitoring\n\n"
+        "🔒 <i>Your device is now bound to this instance. Real-time incident alerts and 1-click approvals will be delivered directly to this chat.</i>"
+    )
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": str(chat_id).strip(),
+        "text": msg,
+        "parse_mode": "HTML"
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                await register_telegram_subscriber(chat_id)
+                return True, "Handshake delivered successfully."
+            else:
+                try:
+                    err_desc = resp.json().get("description", resp.text)
+                except Exception:
+                    err_desc = resp.text
+                return False, f"Telegram API error: {err_desc}"
+    except Exception as e:
+        return False, f"Connection failed: {str(e)}"
+
