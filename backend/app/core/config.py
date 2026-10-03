@@ -38,7 +38,39 @@ class Settings(BaseSettings):
     AMBER_API_KEY: Optional[str] = None
     WEBHOOK_SECRET: Optional[str] = None
 
-    # 6. LLM & Intelligence Provider Keys
+    # 6. LLM Provider — Universal Lego Brain Socket
+    # Switch between: 'local' (Ollama/vLLM/any OpenAI-compatible), 'anthropic', 'openai', 'gemini'
+    LLM_PROVIDER: str = "local"
+
+    # Local model endpoint (Ollama, vLLM, LM Studio, private GPU cluster — anything OpenAI-compatible)
+    # Internal Docker: http://ollama:11434/v1  |  External GPU cluster: http://gpu.internal:8000/v1
+    LOCAL_LLM_ENDPOINT: str = "http://ollama:11434/v1"
+
+    # Model name — any model the user has pulled. No hardcoded list.
+    # Examples: qwen2.5-coder:14b, llama3.3:70b, deepseek-r1:70b, qwen4:latest, custom-sre-v1
+    LOCAL_LLM_MODEL: str = "qwen2.5-coder:14b"
+
+    # Context window for local models. 16384 prevents silent truncation of long log dumps.
+    LOCAL_LLM_CONTEXT_LENGTH: int = 16384
+
+    # Cloud model IDs — keep updated with provider latest stable IDs
+    ANTHROPIC_MODEL: str = "claude-3-7-sonnet-20250219"
+    OPENAI_MODEL: str = "gpt-4o"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    # Amber AI Proxy URL — routes cloud calls through Amber's backend (client uses license key, not master API key)
+    # If set, ANTHROPIC_API_KEY is NOT required on client machines.
+    AMBER_AI_PROXY_URL: Optional[str] = None
+
+    # Air-gapped mode: hard-blocks ALL outbound cloud API calls at code level.
+    # Set to True for banks, defense, or zero-egress enterprise deployments.
+    AIR_GAPPED: bool = False
+
+    # Auto-rollback: if a remediation tool fails health check, auto-trigger rollback.
+    # Default: False — human approval is sovereign. Client must explicitly opt in.
+    AUTO_ROLLBACK_ENABLED: bool = False
+
+    # LLM Provider API Keys (cloud mode)
     OPENAI_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None

@@ -1,9 +1,19 @@
+"""
+Amber SRE Engine — Incidents API.
+
+Auth policy:
+- GET /incidents, GET /incidents/{id}: Public read (dashboard display).
+- POST /incidents, PATCH /incidents/{id}: Require API key (no unauthorized incident creation/modification).
+- GET /incidents/{id}/timeline, /post-mortem: Public read.
+"""
+
 from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from backend.app.auth.security import require_api_key, AuthenticatedUser
 from backend.app.core.database import get_db
 from backend.app.models.incident import Incident, IncidentSeverity, IncidentStatus
 from backend.app.models.alert import Alert
@@ -45,7 +55,12 @@ async def get_incident(incident_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("", response_model=IncidentResponse, status_code=201)
-async def create_incident(incident_in: IncidentCreate, db: AsyncSession = Depends(get_db)):
+async def create_incident(
+    incident_in: IncidentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_api_key),
+):
+    """Create a new incident. Requires API key authentication."""
     incident = Incident(
         title=incident_in.title,
         description=incident_in.description,
@@ -60,7 +75,13 @@ async def create_incident(incident_in: IncidentCreate, db: AsyncSession = Depend
 
 
 @router.patch("/{incident_id}", response_model=IncidentResponse)
-async def update_incident(incident_id: UUID, incident_in: IncidentUpdate, db: AsyncSession = Depends(get_db)):
+async def update_incident(
+    incident_id: UUID,
+    incident_in: IncidentUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_api_key),
+):
+    """Update an incident. Requires API key authentication."""
     result = await db.execute(select(Incident).filter(Incident.id == incident_id))
     incident = result.scalar_one_or_none()
     if not incident:
@@ -78,6 +99,21 @@ async def update_incident(incident_id: UUID, incident_in: IncidentUpdate, db: As
     await db.commit()
     await db.refresh(incident)
     return incident
+
+
+@router.delete("/{incident_id}", status_code=204)
+async def delete_incident(
+    incident_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_api_key),
+):
+    """Delete an incident. Requires API key authentication."""
+    result = await db.execute(select(Incident).filter(Incident.id == incident_id))
+    incident = result.scalar_one_or_none()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    await db.delete(incident)
+    await db.commit()
 
 
 @router.get("/{incident_id}/timeline", response_model=List[ApprovalResponse])

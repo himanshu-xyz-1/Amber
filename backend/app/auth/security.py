@@ -92,11 +92,26 @@ async def require_webhook_auth(
 ) -> bool:
     """
     Guards incoming webhook intake against unauthenticated spam and fake alert injection.
-    If WEBHOOK_SECRET is configured, enforces matching secret header or query token.
+    Production behaviour (FAIL-CLOSED): WEBHOOK_SECRET must be configured.
+    Development/test: allows unprotected webhooks for local testing.
     """
     secret = settings.WEBHOOK_SECRET
+
     if not secret:
-        # If no secret is configured, allow intake (e.g. initial testing or public webhook setups)
+        # Fail-closed in production — reject unauthenticated webhooks
+        if settings.ENVIRONMENT not in ("development", "test"):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Webhook intake is disabled: WEBHOOK_SECRET is not configured in production. "
+                    "Set WEBHOOK_SECRET in your .env to enable webhook ingestion."
+                ),
+            )
+        # Dev/test: allow without secret (log a loud warning)
+        logger.warning(
+            "[SECURITY] WEBHOOK_SECRET not set in development mode. "
+            "All webhook intake is unauthenticated. NEVER deploy this to production."
+        )
         return True
 
     provided_secret = x_webhook_secret or token
@@ -113,3 +128,4 @@ async def require_webhook_auth(
         )
 
     return True
+

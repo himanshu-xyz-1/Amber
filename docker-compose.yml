@@ -57,6 +57,46 @@ services:
     networks:
       - amber-network
 
+  # ──────────────────────────────────────────────────────────────────────
+  # Ollama — Universal Local LLM Engine (The Lego Brain Socket)
+  #
+  # SECURITY: No host port exposed. Ollama is only accessible inside
+  # the Docker bridge network via http://ollama:11434.
+  # The backend connects to it; nothing external can reach it.
+  #
+  # MODEL: Set LOCAL_LLM_MODEL in .env to any model you've pulled.
+  # Examples: qwen2.5-coder:14b, llama3.3:70b, deepseek-r1:70b, qwen4:latest
+  #
+  # GPU: Uncomment the 'deploy' block below for NVIDIA GPU passthrough.
+  # ──────────────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: amber-ollama
+    restart: unless-stopped
+    # NO host port binding — internal Docker network only (security)
+    # To access from host for debugging: docker exec -it amber-ollama ollama list
+    volumes:
+      - ollama_models:/root/.ollama  # Persistent: models survive container restarts
+    environment:
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_MAX_LOADED_MODELS=1
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - amber-network
+    # ── NVIDIA GPU passthrough (uncomment if you have an NVIDIA GPU) ──
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
   backend:
     build:
       context: .
@@ -73,11 +113,14 @@ services:
         condition: service_healthy
       whatsapp-bridge:
         condition: service_started
+      ollama:
+        condition: service_started
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-amber}:${POSTGRES_PASSWORD:-amber_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-amber_db}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_ENABLED=true
       - WHATSAPP_BRIDGE_URL=http://whatsapp-bridge:3001
+      - LOCAL_LLM_ENDPOINT=http://ollama:11434/v1
       - ENVIRONMENT=production
       - HOST=0.0.0.0
       - PORT=8000
@@ -122,7 +165,9 @@ volumes:
   postgres_data:
   redis_data:
   whatsapp_sessions:
+  ollama_models:    # Persistent model storage — models survive container restarts
 
 networks:
   amber-network:
     driver: bridge
+

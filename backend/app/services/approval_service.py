@@ -13,9 +13,11 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from backend.app.core.config import settings
 from backend.app.models.tool_invocation import ToolInvocation, InvocationStatus
 from backend.app.models.incident import Incident, IncidentStatus
 from backend.app.tools.base import tool_registry
+
 
 logger = logging.getLogger(__name__)
 
@@ -118,13 +120,31 @@ async def execute_tool_approval(
                     invocation.status = InvocationStatus.EXECUTED if tool_res.success else InvocationStatus.FAILED
                     if not tool_res.success:
                         invocation.error_message = tool_res.error
-                        # Autonomous Auto-Rollback Guardrail: Trigger immediate rollback if deployment was touched
+
+                        # ──────────────────────────────────────────────────────────────
+                        # Auto-Rollback Guardrail — 4 conditions must ALL be true:
+                        # 1. AUTO_ROLLBACK_ENABLED is explicitly True (default: False)
+                        # 2. The failing tool was NOT itself a rollback/rollout-restart
+                        #    (prevents ping-pong loop that would undo the rollback!)
+                        # 3. The tool operated on a deployment_name (not a pod — pod
+                        #    restart failures NEVER trigger deployment rollback, as the
+                        #    human only approved a pod restart, not a deployment change)
+                        # 4. A rollback_deployment tool is registered
+                        # ──────────────────────────────────────────────────────────────
+                        is_rollback_family = invocation.tool_name in (
+                            "rollback_deployment", "rollout_restart_deployment"
+                        )
                         dep_name = tool_args.get("deployment_name")
-                        ns = tool_args.get("namespace", "production")
-                        if dep_name:
+
+                        if (
+                            settings.AUTO_ROLLBACK_ENABLED
+                            and not is_rollback_family
+                            and dep_name
+                        ):
+                            ns = tool_args.get("namespace", "production")
                             logger.warning(
-                                f"Autonomous SRE: Remediation '{invocation.tool_name}' failed post-fix health check. "
-                                f"Triggering immediate auto-rollback for deployment '{dep_name}'..."
+                                f"[Auto-Rollback] Remediation '{invocation.tool_name}' failed post-fix "
+                                f"health check on deployment '{dep_name}'. Triggering rollback..."
                             )
                             rollback_tool = tool_registry.get("rollback_deployment")
                             if rollback_tool:
@@ -134,11 +154,22 @@ async def execute_tool_approval(
                                         **(invocation.execution_result or {}),
                                         "auto_rollback_triggered": True,
                                         "auto_rollback_success": rb_res.success,
-                                        "auto_rollback_details": rb_res.data
+                                        "auto_rollback_details": rb_res.data,
                                     }
-                                    logger.info(f"Auto-rollback completed with success={rb_res.success}.")
+                                    logger.info(f"[Auto-Rollback] Completed with success={rb_res.success}.")
                                 except Exception as rb_err:
-                                    logger.error(f"Auto-rollback execution error: {rb_err}")
+                                    logger.error(f"[Auto-Rollback] Execution error: {rb_err}")
+                        elif is_rollback_family:
+                            logger.warning(
+                                f"[Auto-Rollback] Skipped — failing tool '{invocation.tool_name}' is already "
+                                "in the rollback family. Running rollback on a failed rollback would undo it."
+                            )
+                        elif not dep_name:
+                            logger.warning(
+                                f"[Auto-Rollback] Skipped — tool '{invocation.tool_name}' has no "
+                                "deployment_name arg. Pod-level failures require human review, not deployment rollback."
+                            )
+
                 except Exception as e:
                     logger.exception(f"Error executing approved tool {invocation.tool_name}: {e}")
                     invocation.status = InvocationStatus.FAILED
