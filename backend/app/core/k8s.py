@@ -321,12 +321,18 @@ async def k8s_rollback_deployment(
 
 async def k8s_check_deployment_health(
     deployment_name: str,
-    namespace: str = "default"
+    namespace: str = "default",
+    timeout_seconds: int = 30,
+    poll_interval: float = 2.0
 ) -> Dict[str, Any]:
     """
     Inspects live health, replica convergence, and pod readiness for a Kubernetes deployment.
-    Returns healthy=True only when desired replicas match ready replicas and no pods are failing.
+    Polls with a convergence loop until desired replicas match ready replicas and Available == True,
+    or until timeout_seconds is exceeded.
     """
+    import asyncio
+    import time
+    start_time = time.time()
     core_api, apps_api = init_k8s_client()
 
     if not apps_api or not core_api:
@@ -338,7 +344,8 @@ async def k8s_check_deployment_health(
                 "desired_replicas": 3,
                 "ready_replicas": 3,
                 "available_replicas": 3,
-                "status": "SIMULATED_HEALTHY"
+                "status": "SIMULATED_HEALTHY",
+                "convergence_time_seconds": 0.1
             }
         return {
             "deployment_name": deployment_name,
@@ -347,39 +354,54 @@ async def k8s_check_deployment_health(
             "error": "Kubernetes cluster connection unavailable."
         }
 
-    try:
-        dep = apps_api.read_namespaced_deployment(name=deployment_name, namespace=namespace)
-        desired = dep.spec.replicas or 1
-        ready = dep.status.ready_replicas or 0
-        available = dep.status.available_replicas or 0
-        updated = dep.status.updated_replicas or 0
+    last_status = {}
+    while (time.time() - start_time) <= timeout_seconds:
+        try:
+            dep = apps_api.read_namespaced_deployment(name=deployment_name, namespace=namespace)
+            desired = dep.spec.replicas or 1
+            ready = dep.status.ready_replicas or 0
+            available = dep.status.available_replicas or 0
+            updated = dep.status.updated_replicas or 0
 
-        # Check conditions
-        conditions = {c.type: c.status for c in (dep.status.conditions or [])}
-        is_available = conditions.get("Available") == "True"
-        is_progressing = conditions.get("Progressing") == "True"
+            # Check conditions
+            conditions = {c.type: c.status for c in (dep.status.conditions or [])}
+            is_available = conditions.get("Available") == "True"
 
-        is_healthy = (ready >= desired) and is_available
+            is_healthy = (ready >= desired) and is_available
+            elapsed = round(time.time() - start_time, 2)
 
-        return {
-            "deployment_name": deployment_name,
-            "namespace": namespace,
-            "healthy": is_healthy,
-            "desired_replicas": desired,
-            "ready_replicas": ready,
-            "available_replicas": available,
-            "updated_replicas": updated,
-            "conditions": conditions,
-            "status": "HEALTHY" if is_healthy else "CONVERGING_OR_DEGRADED"
-        }
-    except ApiException as e:
-        logger.error(f"Failed to check deployment health for '{deployment_name}': {e.reason}")
-        return {
-            "deployment_name": deployment_name,
-            "namespace": namespace,
-            "healthy": False,
-            "error": f"K8s API error: {e.reason}"
-        }
+            last_status = {
+                "deployment_name": deployment_name,
+                "namespace": namespace,
+                "healthy": is_healthy,
+                "desired_replicas": desired,
+                "ready_replicas": ready,
+                "available_replicas": available,
+                "updated_replicas": updated,
+                "conditions": conditions,
+                "convergence_time_seconds": elapsed,
+                "status": "HEALTHY" if is_healthy else "CONVERGING"
+            }
+
+            if is_healthy:
+                logger.info(f"Deployment '{deployment_name}' converged to HEALTHY in {elapsed}s.")
+                return last_status
+
+            if settings.ENVIRONMENT in ("test", "development"):
+                break
+            await asyncio.sleep(poll_interval)
+        except ApiException as e:
+            logger.error(f"Failed to check deployment health for '{deployment_name}': {e.reason}")
+            return {
+                "deployment_name": deployment_name,
+                "namespace": namespace,
+                "healthy": False,
+                "error": f"K8s API error: {e.reason}"
+            }
+
+    if not last_status.get("healthy"):
+        last_status["status"] = "TIMEOUT_OR_DEGRADED"
+    return last_status
 
 
 async def k8s_fetch_pod_logs(

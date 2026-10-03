@@ -30,11 +30,13 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_ENABLED: bool = False
 
-    # 5. Security & Authentication (JWT + Password Hashing)
+    # 5. Security & Authentication (JWT + API Key + Webhook Secrets)
     JWT_SECRET_KEY: str = "change_me_to_a_random_super_secret_key_in_production"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    AMBER_API_KEY: Optional[str] = None
+    WEBHOOK_SECRET: Optional[str] = None
 
     # 6. LLM & Intelligence Provider Keys
     OPENAI_API_KEY: Optional[str] = None

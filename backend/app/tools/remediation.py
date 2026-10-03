@@ -3,6 +3,8 @@ import time
 from typing import Any, Dict, List
 
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from backend.app.core.config import settings
 from backend.app.core.database import AsyncSessionLocal
 from backend.app.core.k8s import (
     k8s_restart_pod,
@@ -57,14 +59,29 @@ class KillDatabaseConnections(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         start_time = time.time()
         pids: List[int] = kwargs["pids"]
+        target_db_url = kwargs.get("target_db_url")
         terminated_pids = []
         failed_pids = []
 
         active_before = None
         active_after = None
 
+        custom_engine = None
+        if target_db_url:
+            try:
+                custom_engine = create_async_engine(target_db_url)
+            except Exception as e:
+                logger.error(f"Cannot connect to target database '{target_db_url}': {e}")
+                return ToolResult(
+                    success=False,
+                    data={"terminated_pids": [], "failed_pids": pids},
+                    error=f"Could not connect to target database: {str(e)}",
+                    execution_time_ms=(time.time() - start_time) * 1000
+                )
+
         try:
-            async with AsyncSessionLocal() as session:
+            session_cm = AsyncSession(custom_engine) if custom_engine else AsyncSessionLocal()
+            async with session_cm as session:
                 is_postgres = bool(session.bind and "postgresql" in session.bind.dialect.name)
                 if is_postgres:
                     # 1. Check count before termination if postgres
@@ -98,25 +115,38 @@ class KillDatabaseConnections(BaseTool):
                     except Exception:
                         pass
                 else:
-                    logger.debug(f"Non-Postgres DB detected ({session.bind.dialect.name if session.bind else 'none'}). Running mock PID termination.")
-                    terminated_pids = pids
+                    if settings.ENVIRONMENT in ("test", "development"):
+                        logger.debug(f"[TEST ENVIRONMENT] Simulated PID termination for dialect '{session.bind.dialect.name if session.bind else 'unknown'}'.")
+                        terminated_pids = pids
+                    else:
+                        logger.error(f"Target database is not PostgreSQL ({session.bind.dialect.name if session.bind else 'unknown'}). Refusing execution.")
+                        failed_pids = pids
         except Exception as e:
-            logger.debug(f"Direct connection execution fallback: {e}")
-            terminated_pids = pids
+            logger.error(f"Direct connection execution error: {e}")
+            failed_pids = pids
+            terminated_pids = []
+        finally:
+            if custom_engine:
+                await custom_engine.dispose()
 
         data = {
             "terminated_pids": terminated_pids,
             "failed_pids": failed_pids,
             "active_connections_before": active_before,
             "active_connections_after": active_after,
-            "execution_status": "SUCCESS" if terminated_pids else "NO_OP"
+            "execution_status": "SUCCESS" if terminated_pids and not failed_pids else ("PARTIAL" if terminated_pids else "FAILED")
         }
 
         execution_time_ms = (time.time() - start_time) * 1000
+        is_success = bool(terminated_pids)
+        error_msg = None
+        if failed_pids:
+            error_msg = f"Failed to terminate PIDs: {failed_pids}"
+
         return ToolResult(
-            success=bool(terminated_pids),
+            success=is_success,
             data=data,
-            error=f"Failed to terminate PIDs: {failed_pids}" if failed_pids and not terminated_pids else None,
+            error=error_msg,
             execution_time_ms=execution_time_ms
         )
 

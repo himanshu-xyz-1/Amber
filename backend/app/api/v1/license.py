@@ -7,9 +7,10 @@ import os
 import re
 import logging
 from typing import Optional
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from backend.app.auth.security import require_api_key, AuthenticatedUser
 from backend.app.core.config import settings
 from backend.app.core.license import license_manager, LicenseManager
 
@@ -57,7 +58,10 @@ def get_license_status():
 
 
 @router.post("/activate", status_code=status.HTTP_200_OK)
-def activate_license(req: LicenseActivateRequest):
+def activate_license(
+    req: LicenseActivateRequest,
+    current_user: AuthenticatedUser = Depends(require_api_key)
+):
     """
     Activates a newly purchased or issued Enterprise license key dynamically.
     Validates cryptographic signature, updates runtime state, and persists to .env.

@@ -118,6 +118,27 @@ async def execute_tool_approval(
                     invocation.status = InvocationStatus.EXECUTED if tool_res.success else InvocationStatus.FAILED
                     if not tool_res.success:
                         invocation.error_message = tool_res.error
+                        # Autonomous Auto-Rollback Guardrail: Trigger immediate rollback if deployment was touched
+                        dep_name = tool_args.get("deployment_name")
+                        ns = tool_args.get("namespace", "production")
+                        if dep_name:
+                            logger.warning(
+                                f"Autonomous SRE: Remediation '{invocation.tool_name}' failed post-fix health check. "
+                                f"Triggering immediate auto-rollback for deployment '{dep_name}'..."
+                            )
+                            rollback_tool = tool_registry.get("rollback_deployment")
+                            if rollback_tool:
+                                try:
+                                    rb_res = await rollback_tool.execute(deployment_name=dep_name, namespace=ns)
+                                    invocation.execution_result = {
+                                        **(invocation.execution_result or {}),
+                                        "auto_rollback_triggered": True,
+                                        "auto_rollback_success": rb_res.success,
+                                        "auto_rollback_details": rb_res.data
+                                    }
+                                    logger.info(f"Auto-rollback completed with success={rb_res.success}.")
+                                except Exception as rb_err:
+                                    logger.error(f"Auto-rollback execution error: {rb_err}")
                 except Exception as e:
                     logger.exception(f"Error executing approved tool {invocation.tool_name}: {e}")
                     invocation.status = InvocationStatus.FAILED
@@ -144,7 +165,15 @@ async def execute_tool_approval(
                         f"(approver: {approver_label})."
                     )
                 elif invocation.status == InvocationStatus.FAILED:
-                    incident.status = IncidentStatus.FAILED
+                    if invocation.execution_result and invocation.execution_result.get("auto_rollback_triggered"):
+                        incident.status = IncidentStatus.ESCALATED
+                        incident.remediation_plan = {
+                            "status": "AUTO_ROLLED_BACK",
+                            "reason": "Post-fix health verification failed; deployment safely rolled back to stable revision.",
+                            "details": invocation.execution_result
+                        }
+                    else:
+                        incident.status = IncidentStatus.FAILED
 
     elif action == "reject":
         invocation.status = InvocationStatus.REJECTED

@@ -6,9 +6,12 @@ from sqlalchemy.future import select
 
 from backend.app.core.database import get_db
 from backend.app.models.incident import Incident, IncidentSeverity, IncidentStatus
+from backend.app.models.alert import Alert
 from backend.app.models.tool_invocation import ToolInvocation
 from backend.app.schemas.incident import IncidentCreate, IncidentResponse, IncidentUpdate
 from backend.app.schemas.approval import ApprovalResponse
+from backend.app.services.post_mortem import generate_incident_post_mortem
+from fastapi.responses import PlainTextResponse
 
 router = APIRouter(prefix="/incidents", tags=["Incidents"])
 
@@ -85,3 +88,40 @@ async def get_incident_timeline(incident_id: UUID, db: AsyncSession = Depends(ge
         .order_by(ToolInvocation.created_at.asc())
     )
     return result.scalars().all()
+
+
+@router.get("/{incident_id}/post-mortem")
+async def get_incident_post_mortem_report(
+    incident_id: UUID,
+    format: Optional[str] = Query("markdown", description="Format: 'markdown' or 'json'"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Generates an executive-ready Markdown or JSON Incident Post-Mortem report.
+    """
+    inc_res = await db.execute(select(Incident).filter(Incident.id == incident_id))
+    incident = inc_res.scalar_one_or_none()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    alerts_res = await db.execute(select(Alert).filter(Alert.incident_id == incident_id))
+    alerts = alerts_res.scalars().all()
+
+    inv_res = await db.execute(
+        select(ToolInvocation)
+        .filter(ToolInvocation.incident_id == incident_id)
+        .order_by(ToolInvocation.created_at.asc())
+    )
+    invocations = inv_res.scalars().all()
+
+    md_content = generate_incident_post_mortem(incident, alerts=alerts, invocations=invocations)
+    if format == "json":
+        return {
+            "incident_id": str(incident_id),
+            "title": incident.title,
+            "severity": incident.severity.value,
+            "status": incident.status.value,
+            "post_mortem_markdown": md_content
+        }
+
+    return PlainTextResponse(content=md_content, media_type="text/markdown")

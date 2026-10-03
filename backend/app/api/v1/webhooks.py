@@ -8,6 +8,7 @@ from backend.app.core.database import get_db
 from backend.app.models.alert import Alert, AlertSource
 from backend.app.schemas.alert import WebhookAckResponse
 from backend.app.agents.processor import process_alert_into_incident
+from backend.app.auth.security import require_webhook_auth
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
@@ -17,7 +18,8 @@ async def ingest_webhook(
     source: str,
     request: Request,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _authorized: bool = Depends(require_webhook_auth),
 ) -> WebhookAckResponse:
     """
     High-throughput webhook ingestion gateway (500 alerts/sec capacity).
