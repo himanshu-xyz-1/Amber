@@ -50,9 +50,36 @@ async def require_api_key(
             )
         # Constant-time comparison to prevent timing attacks
         if hmac.compare_digest(token.strip(), configured_key.strip()):
-            # Shared master API key identity is system-admin, with optional client hint logged
-            identity_str = f"api-key:admin" + (f" ({x_approver_email})" if x_approver_email else "")
-            return AuthenticatedUser(identity=identity_str, role="admin", auth_method="api_key")
+            if x_approver_email:
+                clean_email = x_approver_email.strip().lower()
+                try:
+                    from backend.app.core.database import AsyncSessionLocal
+                    from backend.app.models.user import User
+                    from sqlalchemy import select
+                    async with AsyncSessionLocal() as session:
+                        user_res = await session.execute(
+                            select(User).filter(User.email == clean_email, User.is_active == True)
+                        )
+                        verified_user = user_res.scalar_one_or_none()
+                        if verified_user:
+                            role_val = verified_user.role.value if hasattr(verified_user.role, "value") else str(verified_user.role)
+                            return AuthenticatedUser(
+                                identity=f"user:{verified_user.email}",
+                                role=role_val,
+                                user_id=verified_user.id,
+                                auth_method="verified_api_approver"
+                            )
+                        else:
+                            raise HTTPException(
+                                status_code=status.HTTP_403_FORBIDDEN,
+                                detail=f"Unregistered approver identity: '{clean_email}' does not match any active SRE user account."
+                            )
+                except HTTPException:
+                    raise
+                except Exception as db_err:
+                    logger.debug(f"User DB verification skipped: {db_err}")
+
+            return AuthenticatedUser(identity="api-key:system-admin", role="admin", auth_method="api_key")
 
         # Fallback: check if token is a valid signed JWT with verified identity
         try:

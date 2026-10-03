@@ -5,6 +5,7 @@ across Web Dashboard, Telegram Bot, and Slack integrations.
 """
 
 from datetime import datetime, timezone
+import inspect
 import json
 import logging
 from typing import Any, Dict, Optional
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from backend.app.core.config import settings
-from backend.app.models.tool_invocation import ToolInvocation, InvocationStatus
+from backend.app.models.tool_invocation import ToolInvocation, InvocationStatus, RiskLevel
 from backend.app.models.incident import Incident, IncidentStatus
 from backend.app.tools.base import tool_registry
 
@@ -105,8 +106,24 @@ async def execute_tool_approval(
         tool = tool_registry.get(invocation.tool_name)
         if tool:
             tool_args = invocation.tool_args or {}
+
+            # Enforce Commercial License feature gate for remediation actions in production
+            from backend.app.core.license import license_manager
+            if invocation.risk_level == RiskLevel.HIGH and not license_manager.is_valid and settings.ENVIRONMENT not in ("test", "development"):
+                invocation.status = InvocationStatus.FAILED
+                invocation.error_message = "Automated high-risk remediation is locked in Community Edition. Active Enterprise license required."
+                invocation.executed_at = datetime.now(timezone.utc)
+                await db.commit()
+                raise ApprovalExecutionError("Automated remediation locked: requires active Amber Enterprise license.", status_code=403)
+
             # Enforce argument validation guardrail before execution
-            if not tool.validate_args(**tool_args):
+            val_result = tool.validate_args(**tool_args)
+            if inspect.iscoroutine(val_result):
+                is_valid = await val_result
+            else:
+                is_valid = bool(val_result)
+
+            if not is_valid:
                 invocation.status = InvocationStatus.FAILED
                 invocation.error_message = f"Tool argument validation guardrail rejected args for '{invocation.tool_name}'."
                 invocation.executed_at = datetime.now(timezone.utc)

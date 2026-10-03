@@ -51,6 +51,7 @@ class LicenseManager:
         self._validate()
 
     def _validate(self):
+        self._public_key = serialization.load_pem_public_key(AMBER_MASTER_PUBLIC_KEY_PEM)
         token = self._raw_token if self._raw_token is not None else getattr(settings, "AMBER_LICENSE_KEY", None)
 
         if not token:

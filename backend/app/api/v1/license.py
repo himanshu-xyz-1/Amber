@@ -26,7 +26,11 @@ class LicenseActivateRequest(BaseModel):
 
 
 def _persist_license_to_env(key: str):
-    """Safely updates or appends AMBER_LICENSE_KEY in .env file."""
+    """Safely updates or appends AMBER_LICENSE_KEY in .env file (skipped in test mode)."""
+    if settings.ENVIRONMENT == "test":
+        logger.debug("[TEST MODE] Skipping .env persistence of license key.")
+        return
+
     env_path = ".env"
     if not os.path.exists(env_path):
         with open(env_path, "w") as f:

@@ -2,7 +2,6 @@ import pytest
 from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.core.config import settings
-from scripts.generate_license import generate_license, DEFAULT_KEY_PATH
 
 
 def test_approvals_require_auth():
@@ -75,3 +74,60 @@ def test_webhook_secret_verification():
         assert res_ok.status_code == 202
     finally:
         settings.WEBHOOK_SECRET = orig_secret
+
+
+@pytest.mark.asyncio
+async def test_incident_soft_delete_preserves_audit_trail():
+    """Verify that deleting an incident soft-deletes it (status CANCELLED) to preserve SOC2 audit trail."""
+    import uuid
+    from backend.app.core.database import AsyncSessionLocal, Base, engine
+    from backend.app.models.incident import Incident, IncidentStatus, IncidentSeverity
+    from sqlalchemy import select
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with AsyncSessionLocal() as session:
+        inc = Incident(
+            title="Temporary Test Incident for Soft Delete",
+            severity=IncidentSeverity.P3,
+            status=IncidentStatus.TRIGGERED,
+            source_service="billing-api"
+        )
+        session.add(inc)
+        await session.commit()
+        await session.refresh(inc)
+        inc_id = inc.id
+
+    client = TestClient(app)
+    headers = {"X-API-Key": "test_amber_api_key_2026"}
+
+    # Execute DELETE request
+    res = client.delete(f"/api/v1/incidents/{inc_id}", headers=headers)
+    assert res.status_code == 204
+
+    # Verify incident still exists in database with status CANCELLED
+    async with AsyncSessionLocal() as session:
+        check_res = await session.execute(select(Incident).filter(Incident.id == inc_id))
+        deleted_inc = check_res.scalar_one_or_none()
+        assert deleted_inc is not None, "Incident was hard-deleted! SOC2 audit trail violated."
+        assert deleted_inc.status == IncidentStatus.CANCELLED
+        assert "ARCHIVED" in deleted_inc.description
+
+
+@pytest.mark.asyncio
+async def test_unregistered_approver_email_rejected_in_production(monkeypatch):
+    """Verify that arbitrary spoofed X-Approver-Email is rejected in production if not in users table."""
+    client = TestClient(app)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "AMBER_API_KEY", "prod_secret_key_123")
+
+    headers = {
+        "X-API-Key": "prod_secret_key_123",
+        "X-Approver-Email": "fake_spoofed_ceo@targetcorp.com"
+    }
+
+    res = client.get("/api/v1/approvals/pending", headers=headers)
+    assert res.status_code == 403
+    assert "Unregistered approver identity" in res.json()["detail"]
+

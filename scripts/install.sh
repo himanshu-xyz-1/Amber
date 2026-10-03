@@ -190,11 +190,20 @@ if ! command -v docker &>/dev/null; then
     sudo usermod -aG docker "$USER" || true
 fi
 
+AMBER_VERSION="${AMBER_VERSION:-main}"
+
 # ──────────────────────────────────────────────────────────────────────
-# Step 5: Offline bundle OR git clone
+# Step 5: Offline bundle verification OR version-pinned git clone
 # ──────────────────────────────────────────────────────────────────────
 if [[ -n "$OFFLINE_BUNDLE" ]]; then
-    info "Offline install mode. Extracting bundle: ${OFFLINE_BUNDLE}"
+    info "Offline install mode. Verifying bundle integrity: ${OFFLINE_BUNDLE}"
+    if [[ -f "${OFFLINE_BUNDLE}.sha256" ]]; then
+        info "Checking SHA-256 checksum..."
+        sha256sum -c "${OFFLINE_BUNDLE}.sha256" || error "SHA-256 checksum verification failed for bundle!"
+        info "Checksum verified: Integrity OK"
+    else
+        warn "No .sha256 checksum signature file found alongside bundle."
+    fi
     mkdir -p "$AMBER_DIR"
     tar -xzf "$OFFLINE_BUNDLE" -C "$AMBER_DIR" --strip-components=1
     cd "$AMBER_DIR"
@@ -204,9 +213,11 @@ else
     if [ -d "$AMBER_DIR" ]; then
         info "Updating existing Amber installation..."
         cd "$AMBER_DIR"
-        git pull origin main || true
+        git fetch origin --tags 2>/dev/null || true
+        git checkout "$AMBER_VERSION" 2>/dev/null || git pull origin "$AMBER_VERSION" 2>/dev/null || true
     else
-        info "Cloning Amber SRE repository..."
+        info "Cloning Amber SRE repository (pinned version: ${AMBER_VERSION})..."
+        git clone --depth 1 --branch "$AMBER_VERSION" "$REPO_URL" "$AMBER_DIR" 2>/dev/null || \
         git clone --depth 1 "$REPO_URL" "$AMBER_DIR"
         cd "$AMBER_DIR"
     fi

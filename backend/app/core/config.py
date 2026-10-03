@@ -54,9 +54,9 @@ class Settings(BaseSettings):
     LOCAL_LLM_CONTEXT_LENGTH: int = 16384
 
     # Cloud model IDs — keep updated with provider latest stable IDs
-    ANTHROPIC_MODEL: str = "claude-3-7-sonnet-20250219"
-    OPENAI_MODEL: str = "gpt-4o"
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-latest"
+    OPENAI_MODEL: str = "gpt-4o-latest"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # Amber AI Proxy URL — routes cloud calls through Amber's backend (client uses license key, not master API key)
     # If set, ANTHROPIC_API_KEY is NOT required on client machines.

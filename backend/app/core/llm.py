@@ -41,27 +41,45 @@ logger = logging.getLogger(__name__)
 # LEVEL_3: Enterprise — full proposals + auto-fix eligible (if client enables it).
 # ──────────────────────────────────────────────
 MODEL_TRUST_REGISTRY: Dict[str, int] = {
-    # Certified — Level 2 (Standard Production)
+    # Certified Observe Only — Level 1
+    "qwen2.5-coder:7b": 1,
+    "llama3.1:8b": 1,
+    "phi4:3.8b": 1,
+    # Certified — Level 2 (Standard Production HITL: 14B–32B)
     "qwen2.5-coder:14b": 2,
-    "qwen2.5-coder:7b": 2,
     "phi4:14b": 2,
     "phi-4:14b": 2,
     "mistral-small:24b": 2,
     "mistral-small3.2:24b": 2,
     "qwen2.5-coder:32b": 2,
-    # Certified — Level 3 (Enterprise)
+    # Certified — Level 3 (Enterprise Autonomous: 70B+ / Frontier Cloud)
     "qwen2.5:72b": 3,
     "llama3.1:70b": 3,
     "llama3.3:70b-instruct-q4_K_M": 3,
     "llama3.3:70b": 3,
     "qwen2.5:72b-instruct": 3,
-    # Cloud — Level 3 (Enterprise, via Amber Proxy)
+    # Cloud Frontier Models — Level 3 (via Amber Proxy or BYOK)
+    "claude-3-5-sonnet-latest": 3,
     "claude-3-5-sonnet-20241022": 3,
     "claude-3-7-sonnet-20250219": 3,
+    "gpt-4o-latest": 3,
     "gpt-4o": 3,
     "gemini-2.5-flash": 3,
     "gemini-2.5-pro": 3,
+    "gemini-2.0-flash": 3,
 }
+
+# Dynamically augment registry from evals/certified_models.json if available
+try:
+    from pathlib import Path
+    _evals_file = Path(__file__).resolve().parent.parent.parent.parent / "evals" / "certified_models.json"
+    if _evals_file.exists():
+        with open(_evals_file, "r") as _f:
+            _eval_data = json.load(_f)
+            for _m, _meta in _eval_data.get("certified_models", {}).items():
+                MODEL_TRUST_REGISTRY[_m] = _meta.get("trust_level", 1)
+except Exception as _e:
+    logger.debug(f"Could not load evals/certified_models.json: {_e}")
 
 # Any model NOT in this registry gets LEVEL_1 (observe only, no dangerous proposals)
 DEFAULT_TRUST_LEVEL = 1

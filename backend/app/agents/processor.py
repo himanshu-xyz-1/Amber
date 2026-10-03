@@ -75,6 +75,26 @@ async def process_alert_into_incident(alert_id: uuid.UUID, source: str, raw_payl
             incident.status = IncidentStatus.INVESTIGATING
             await session.commit()
 
+            # 2.5 License Infrastructure Limit Runtime Enforcement
+            from backend.app.core.license import license_manager
+            from sqlalchemy import distinct, func
+            
+            services_count_res = await session.execute(
+                select(func.count(distinct(Incident.source_service)))
+            )
+            active_services_count = services_count_res.scalar() or 0
+            
+            limits_ok, limit_err = license_manager.check_infrastructure_limits(
+                service_count=active_services_count
+            )
+            if not limits_ok:
+                logger.warning(f"[LICENSE LIMIT ENFORCED] {limit_err}")
+                incident.status = IncidentStatus.TRIGGERED
+                incident.root_cause_summary = f"[COMMERCIAL LICENSE LIMIT] {limit_err}. Autonomous agent remediation locked."
+                incident.remediation_plan = {"error": limit_err, "license_tier": license_manager.tier}
+                await session.commit()
+                return
+
             # 3. Execute LangGraph Agent Pipeline
             graph_result = await run_incident_graph(
                 incident_id=str(incident.id),

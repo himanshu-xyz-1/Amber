@@ -18,3 +18,31 @@ if not os.environ.get("JWT_SECRET_KEY"):
 def enforce_test_env(monkeypatch):
     """Guarantees test environment isolation for all test cases."""
     monkeypatch.setenv("ENVIRONMENT", "test")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_database():
+    """Ensures test database tables exist before test execution."""
+    import asyncio
+    from backend.app.core.database import engine, Base
+    import backend.app.models.user
+    import backend.app.models.incident
+    import backend.app.models.alert
+    import backend.app.models.tool_invocation
+    import backend.app.models.runbook
+
+    async def _init():
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    if loop.is_running():
+        asyncio.ensure_future(_init())
+    else:
+        loop.run_until_complete(_init())
+

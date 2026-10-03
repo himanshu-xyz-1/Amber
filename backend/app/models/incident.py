@@ -25,6 +25,7 @@ class IncidentStatus(enum.Enum):
     RESOLVED = "RESOLVED"
     FAILED = "FAILED"
     ESCALATED = "ESCALATED"
+    CANCELLED = "CANCELLED"
 
 
 class Incident(Base):

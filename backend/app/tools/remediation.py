@@ -46,6 +46,20 @@ class KillDatabaseConnections(BaseTool):
         return 10
 
     def validate_args(self, **kwargs) -> bool:
+        # Strict key whitelist to prevent prompt injection or bypass via extra arguments
+        allowed_keys = {"pids", "target_db_url"}
+        if settings.ENVIRONMENT == "test":
+            allowed_keys.add("mock")
+
+        for key in kwargs:
+            if key not in allowed_keys:
+                logger.warning(f"KillDatabaseConnections rejected unknown argument: '{key}'")
+                return False
+
+        if "mock" in kwargs and settings.ENVIRONMENT != "test":
+            logger.error("KillDatabaseConnections: 'mock' parameter is strictly forbidden outside test environment.")
+            return False
+
         if "pids" not in kwargs or not isinstance(kwargs["pids"], list):
             return False
         pids = kwargs["pids"]
@@ -58,10 +72,26 @@ class KillDatabaseConnections(BaseTool):
 
     async def execute(self, **kwargs) -> ToolResult:
         start_time = time.time()
-        pids: List[int] = kwargs["pids"]
+        pids: List[int] = kwargs.get("pids", [])
         target_db_url = kwargs.get("target_db_url")
         terminated_pids = []
         failed_pids = []
+
+        # Allow explicit mock execution ONLY in test environment
+        if kwargs.get("mock") is True:
+            if settings.ENVIRONMENT != "test":
+                return ToolResult(
+                    success=False,
+                    data={"terminated_pids": [], "failed_pids": pids},
+                    error="Security violation: 'mock' parameter is strictly forbidden outside test environment.",
+                    execution_time_ms=(time.time() - start_time) * 1000
+                )
+            return ToolResult(
+                success=True,
+                data={"terminated_pids": pids, "failed_pids": [], "execution_status": "SUCCESS"},
+                error=None,
+                execution_time_ms=(time.time() - start_time) * 1000
+            )
 
         active_before = None
         active_after = None
@@ -84,15 +114,6 @@ class KillDatabaseConnections(BaseTool):
                 success=False,
                 data={"terminated_pids": [], "failed_pids": pids},
                 error="Safety refusal: 'target_db_url' is mandatory in production. Amber refuses to terminate connections on its internal database.",
-                execution_time_ms=(time.time() - start_time) * 1000
-            )
-
-        # Allow explicit mock execution for unit tests
-        if kwargs.get("mock") is True:
-            return ToolResult(
-                success=True,
-                data={"terminated_pids": pids, "failed_pids": [], "execution_status": "SUCCESS"},
-                error=None,
                 execution_time_ms=(time.time() - start_time) * 1000
             )
 
