@@ -32,8 +32,10 @@ async def list_incidents(
     severity: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_api_key),
 ):
+    """List incidents. Requires API key or authenticated bearer token."""
     query = select(Incident).order_by(Incident.created_at.desc())
     if status:
         query = query.filter(Incident.status == status)
@@ -46,7 +48,12 @@ async def list_incidents(
 
 
 @router.get("/{incident_id}", response_model=IncidentResponse)
-async def get_incident(incident_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_incident(
+    incident_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_api_key),
+):
+    """Get incident details. Requires API key or authenticated bearer token."""
     result = await db.execute(select(Incident).filter(Incident.id == incident_id))
     incident = result.scalar_one_or_none()
     if not incident:
@@ -107,17 +114,24 @@ async def delete_incident(
     db: AsyncSession = Depends(get_db),
     current_user: AuthenticatedUser = Depends(require_api_key),
 ):
-    """Delete an incident. Requires API key authentication."""
+    """Soft-delete an incident to preserve the immutable audit trail."""
     result = await db.execute(select(Incident).filter(Incident.id == incident_id))
     incident = result.scalar_one_or_none()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
-    await db.delete(incident)
+    # Soft delete: mark as cancelled and log approver identity in description
+    incident.status = IncidentStatus.CANCELLED
+    incident.description = f"[ARCHIVED by {current_user.identity}] {incident.description or ''}".strip()
     await db.commit()
 
 
 @router.get("/{incident_id}/timeline", response_model=List[ApprovalResponse])
-async def get_incident_timeline(incident_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_incident_timeline(
+    incident_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_api_key),
+):
+    """Get incident remediation timeline. Requires API key."""
     result = await db.execute(
         select(ToolInvocation)
         .filter(ToolInvocation.incident_id == incident_id)
@@ -130,10 +144,11 @@ async def get_incident_timeline(incident_id: UUID, db: AsyncSession = Depends(ge
 async def get_incident_post_mortem_report(
     incident_id: UUID,
     format: Optional[str] = Query("markdown", description="Format: 'markdown' or 'json'"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_api_key),
 ):
     """
-    Generates an executive-ready Markdown or JSON Incident Post-Mortem report.
+    Generates an executive-ready Markdown or JSON Incident Post-Mortem report. Requires API key.
     """
     inc_res = await db.execute(select(Incident).filter(Incident.id == incident_id))
     incident = inc_res.scalar_one_or_none()

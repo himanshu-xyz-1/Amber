@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Embedded Amber Technologies Master Public Key (Ed25519)
 # Public verification key - Safe to include in open/source-available code.
 AMBER_MASTER_PUBLIC_KEY_PEM = b"""-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAiV3g/MDWfshPFm/9Giut+4ASegoppn63ygK0D2ba3mU=
+MCowBQYDK2VwAyEA1X0r2z+OlvE+422UsysC7IzRTTZCzdzQoiDYeijZChc=
 -----END PUBLIC KEY-----"""
 
 

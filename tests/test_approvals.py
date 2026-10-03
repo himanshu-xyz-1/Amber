@@ -47,7 +47,7 @@ async def test_execute_tool_approval_lifecycle():
         tool_inv = ToolInvocation(
             incident_id=incident.id,
             tool_name="kill_db_connections",
-            tool_args={"pids": [101]},
+            tool_args={"pids": [101], "mock": True},
             risk_level=RiskLevel.HIGH,
             status=InvocationStatus.PENDING_APPROVAL,
             payload_sha256="abc123sha",

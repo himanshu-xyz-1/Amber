@@ -50,10 +50,11 @@ async def require_api_key(
             )
         # Constant-time comparison to prevent timing attacks
         if hmac.compare_digest(token.strip(), configured_key.strip()):
-            approver = x_approver_email or "Authorized API Admin"
-            return AuthenticatedUser(identity=approver, role="admin", auth_method="api_key")
+            # Shared master API key identity is system-admin, with optional client hint logged
+            identity_str = f"api-key:admin" + (f" ({x_approver_email})" if x_approver_email else "")
+            return AuthenticatedUser(identity=identity_str, role="admin", auth_method="api_key")
 
-        # Fallback: check if token is a valid JWT
+        # Fallback: check if token is a valid signed JWT with verified identity
         try:
             import jwt
             payload = jwt.decode(
@@ -61,9 +62,10 @@ async def require_api_key(
                 settings.JWT_SECRET_KEY,
                 algorithms=[settings.JWT_ALGORITHM]
             )
-            sub = payload.get("sub", x_approver_email or "JWT SRE User")
+            # Verified subject from cryptographically signed JWT — cannot be spoofed by header
+            sub = payload.get("sub") or payload.get("email") or "jwt:authenticated-user"
             role = payload.get("role", "sre")
-            return AuthenticatedUser(identity=sub, role=role, auth_method="jwt")
+            return AuthenticatedUser(identity=f"user:{sub}", role=role, auth_method="jwt")
         except Exception:
             pass
 

@@ -68,26 +68,77 @@ DEFAULT_TRUST_LEVEL = 1
 
 
 def get_model_trust_level() -> int:
-    """Returns the trust level for the currently configured model."""
+    """
+    Returns the trust level for the currently configured model.
+    LEVEL_1 (Observe Only):
+      - Models < 14B (e.g. 1.5B, 3B, 7B, 8B, gpt-4o-mini, haiku)
+      - Unknown / uncertified models
+    LEVEL_2 (High Trust / Assisted HITL):
+      - Certified 14B–32B models (e.g. qwen2.5-coder:14b, qwen2.5-coder:32b, phi4:14b, mistral-small:24b)
+      - Proposes remediation tools with strict argument validation; requires human approval.
+    LEVEL_3 (Enterprise Autonomous):
+      - Certified 70B+ models (e.g. llama3.3:70b, qwen2.5:72b)
+      - Frontier Cloud models (Claude 3.5/3.7 Sonnet, GPT-4o, Gemini 2.0 Flash / 1.5 Pro)
+    """
     provider = settings.LLM_PROVIDER.lower()
     if provider == "local":
-        model = settings.LOCAL_LLM_MODEL.lower()
+        model = settings.LOCAL_LLM_MODEL.lower().strip()
     elif provider == "anthropic":
-        model = settings.ANTHROPIC_MODEL.lower()
+        model = settings.ANTHROPIC_MODEL.lower().strip()
     elif provider == "openai":
-        model = settings.OPENAI_MODEL.lower()
+        model = settings.OPENAI_MODEL.lower().strip()
     elif provider == "gemini":
-        model = settings.GEMINI_MODEL.lower()
+        model = settings.GEMINI_MODEL.lower().strip()
     else:
         return DEFAULT_TRUST_LEVEL
 
-    # Exact match first
+    # 1. Cloud Provider Explicit Trust Rules
+    if provider == "openai":
+        if "mini" in model or "gpt-3.5" in model:
+            return 1
+        if any(f in model for f in ["gpt-4o", "gpt-4-turbo", "o1", "o3"]):
+            return 3
+        return 1
+
+    if provider == "anthropic":
+        if "haiku" in model:
+            return 1
+        if any(f in model for f in ["sonnet", "opus"]):
+            return 3
+        return 1
+
+    if provider == "gemini":
+        if "flash-8b" in model:
+            return 1
+        if any(f in model for f in ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash", "gemini-pro"]):
+            return 3
+        return 1
+
+    # 2. Local Model Size and Family Parsing (Zero loose prefix bug)
     if model in MODEL_TRUST_REGISTRY:
         return MODEL_TRUST_REGISTRY[model]
-    # Prefix match (e.g. "qwen2.5-coder:14b-instruct-q4" matches "qwen2.5-coder:14b")
-    for known_model, level in MODEL_TRUST_REGISTRY.items():
-        if model.startswith(known_model.split(":")[0]):
-            return level
+
+    # Extract parameter size via regex (e.g., ":14b", ":70b", ":8b", ":1.5b")
+    size_match = re.search(r":(\d+(?:\.\d+)?)b", model)
+    if size_match:
+        try:
+            param_size = float(size_match.group(1))
+            if param_size < 14.0:
+                # 1.5b, 3b, 7b, 8b are ALWAYS Level 1 (observe only)
+                return 1
+            elif 14.0 <= param_size < 65.0:
+                # Certified 14B - 32B coding/SRE model families get Level 2
+                if any(fam in model for fam in ["qwen2.5-coder", "phi4", "phi-4", "mistral-small", "codellama"]):
+                    return 2
+                return 1
+            else:
+                # 65B - 72B+ enterprise model families get Level 3
+                if any(fam in model for fam in ["llama3.1", "llama3.3", "llama-3.1", "llama-3.3", "qwen2.5"]):
+                    return 3
+                return 2
+        except ValueError:
+            pass
+
     return DEFAULT_TRUST_LEVEL
 
 
@@ -220,24 +271,62 @@ class LLMGateway:
         self, prompt: str, system_prompt: str, temperature: float, timeout: float
     ) -> Optional[str]:
         """
-        Calls any OpenAI-compatible local endpoint (Ollama, vLLM, TGI, LM Studio, etc.).
-        Model name comes from LOCAL_LLM_MODEL — any model the user has pulled.
-        context_length=16384 prevents silent truncation of long log dumps.
+        Calls local endpoint. Supports:
+        1. Native Ollama (/api/chat) with options.num_ctx and think: false
+        2. OpenAI-compatible (/v1/chat/completions) for vLLM / LocalAI / GPU clusters
         """
         endpoint = settings.LOCAL_LLM_ENDPOINT.rstrip("/")
         model = settings.LOCAL_LLM_MODEL
-        url = f"{endpoint}/chat/completions"
 
+        # If endpoint is an Ollama server, use native /api/chat
+        # which reliably honors num_ctx and natively disables thinking tokens.
+        is_ollama = "11434" in endpoint or endpoint.endswith("/v1")
+
+        if is_ollama:
+            base_url = endpoint[:-3] if endpoint.endswith("/v1") else endpoint
+            url = f"{base_url}/api/chat"
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                "stream": False,
+                "format": "json",
+                "options": {
+                    "num_ctx": settings.LOCAL_LLM_CONTEXT_LENGTH,
+                    "temperature": temperature,
+                },
+                "think": False,
+            }
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                try:
+                    resp = await client.post(url, json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    if "message" in data and "content" in data["message"]:
+                        return data["message"]["content"]
+                except httpx.ConnectError:
+                    logger.warning(
+                        f"[LLMGateway/local] Cannot connect to local LLM at '{endpoint}'. "
+                        "Is Ollama running? Falling back to heuristics."
+                    )
+                    return None
+                except Exception as e:
+                    logger.debug(f"[LLMGateway/local] Native /api/chat failed ({e}), trying /v1 fallback...")
+
+        # Standard OpenAI-compatible /v1/chat/completions fallback (vLLM / Triton / etc.)
+        url = f"{endpoint}/chat/completions" if not endpoint.endswith("/chat/completions") else endpoint
         payload = {
             "model": model,
             "temperature": temperature,
-            "response_format": {"type": "json_object"},  # Native JSON mode (Ollama ≥0.1.14 / vLLM)
+            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
             "options": {
-                "num_ctx": settings.LOCAL_LLM_CONTEXT_LENGTH,  # Prevent silent log truncation
+                "num_ctx": settings.LOCAL_LLM_CONTEXT_LENGTH,
             },
             "stream": False,
         }
@@ -331,16 +420,18 @@ class LLMGateway:
     async def _call_gemini(
         self, prompt: str, system_prompt: str, temperature: float, timeout: float
     ) -> Optional[str]:
-        """Calls Google Gemini via REST (no SDK import needed)."""
+        """Calls Google Gemini via REST using secure x-goog-api-key header (no key in URL)."""
         if not settings.GEMINI_API_KEY:
             logger.error("[LLMGateway/gemini] No GEMINI_API_KEY configured.")
             return None
 
         model = settings.GEMINI_MODEL
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
-            f":generateContent?key={settings.GEMINI_API_KEY}"
-        )
+        # Pass API key via header to prevent credential leakage in logs or URL traces
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        headers = {
+            "x-goog-api-key": settings.GEMINI_API_KEY,
+            "Content-Type": "application/json",
+        }
 
         payload = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
@@ -351,7 +442,7 @@ class LLMGateway:
             },
         }
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()

@@ -22,7 +22,16 @@ async def dispatch_incident_notifications(
     Broadcasts incident alerts across all configured channels concurrently.
     Returns status map of channel deliveries.
     """
+    from backend.app.core.config import settings
     from backend.app.core.license import license_manager
+
+    # Air-Gapped Mode: Strictly suppress all external notification channels (zero egress)
+    if settings.AIR_GAPPED:
+        logger.info(
+            "[AIR-GAPPED] Outbound external notifications (Slack, Telegram, WhatsApp) suppressed. "
+            "Alert queued strictly for internal on-prem dashboard."
+        )
+        return {"slack": False, "telegram": False, "whatsapp": False}
 
     # License Enforcement: Check if enterprise channels are unlocked
     allow_slack = license_manager.is_feature_enabled("slack_approvals")

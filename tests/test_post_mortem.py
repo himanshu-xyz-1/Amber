@@ -74,14 +74,15 @@ async def test_get_post_mortem_endpoint():
         inc_id = str(inc.id)
 
     client = TestClient(app)
+    headers = {"X-API-Key": "test_amber_api_key_2026"}
     # Test Markdown format
-    res = client.get(f"/api/v1/incidents/{inc_id}/post-mortem")
+    res = client.get(f"/api/v1/incidents/{inc_id}/post-mortem", headers=headers)
     assert res.status_code == 200
     assert "text/markdown" in res.headers["content-type"]
     assert "Incident Post-Mortem: K8s Ingress Gateway Degraded" in res.text
 
     # Test JSON format
-    res_json = client.get(f"/api/v1/incidents/{inc_id}/post-mortem?format=json")
+    res_json = client.get(f"/api/v1/incidents/{inc_id}/post-mortem?format=json", headers=headers)
     assert res_json.status_code == 200
     data = res_json.json()
     assert data["incident_id"] == inc_id

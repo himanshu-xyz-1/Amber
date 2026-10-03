@@ -100,7 +100,7 @@ select_llm() {
     echo "  [5] Skip LLM now (Amber will run in heuristics-only mode)"
     echo "========================================================"
     echo ""
-    read -rp "  Select [1-5] (default: 1): " LLM_CHOICE
+    read -rp "  Select [1-5] (default: 1): " LLM_CHOICE < /dev/tty || LLM_CHOICE="1"
     LLM_CHOICE="${LLM_CHOICE:-1}"
 
     case "$LLM_CHOICE" in
@@ -115,14 +115,14 @@ select_llm() {
             echo "    - qwen4:latest      (when available)"
             echo "    - Or any other model you want!"
             echo ""
-            read -rp "  Enter model name [${RECOMMENDED}]: " CHOSEN_MODEL
+            read -rp "  Enter model name [${RECOMMENDED}]: " CHOSEN_MODEL < /dev/tty || CHOSEN_MODEL="${RECOMMENDED}"
             CHOSEN_MODEL="${CHOSEN_MODEL:-${RECOMMENDED}}"
 
             # Validate VRAM/RAM for known heavy models
             if [[ "$CHOSEN_MODEL" == *"70b"* ]] && [[ $VRAM_GB -lt 48 ]] && [[ $RAM_GB -lt 64 ]]; then
                 warn "70B models need 48GB+ VRAM or 64GB+ RAM. Your machine has ${VRAM_GB}GB VRAM / ${RAM_GB}GB RAM."
                 warn "It may run slowly (CPU mode). Consider a smaller model for production."
-                read -rp "  Continue anyway? [y/N]: " CONFIRM
+                read -rp "  Continue anyway? [y/N]: " CONFIRM < /dev/tty || CONFIRM="N"
                 [[ "${CONFIRM:-N}" =~ ^[Yy]$ ]] || { info "Switching to ${RECOMMENDED}..."; CHOSEN_MODEL="$RECOMMENDED"; }
             fi
 
@@ -134,8 +134,8 @@ select_llm() {
             ;;
         2)
             echo ""
-            read -rp "  Enter your vLLM/OpenAI-compatible endpoint URL: " CUSTOM_ENDPOINT
-            read -rp "  Enter model name (e.g. llama3.3-70b, qwen2.5-coder): " CUSTOM_MODEL
+            read -rp "  Enter your vLLM/OpenAI-compatible endpoint URL: " CUSTOM_ENDPOINT < /dev/tty
+            read -rp "  Enter model name (e.g. llama3.3-70b, qwen2.5-coder): " CUSTOM_MODEL < /dev/tty
             set_env "LLM_PROVIDER" "local"
             set_env "LOCAL_LLM_ENDPOINT" "$CUSTOM_ENDPOINT"
             set_env "LOCAL_LLM_MODEL" "$CUSTOM_MODEL"
@@ -150,12 +150,12 @@ select_llm() {
             LLM_MODEL_SELECTED="claude-3-7-sonnet-20250219"
             ;;
         4)
-            read -rp "  Enter your GEMINI_API_KEY: " GEMINI_KEY
+            read -rp "  Enter your GEMINI_API_KEY: " GEMINI_KEY < /dev/tty
             set_env "LLM_PROVIDER" "gemini"
             set_env "GEMINI_API_KEY" "$GEMINI_KEY"
-            set_env "GEMINI_MODEL" "gemini-2.5-flash"
+            set_env "GEMINI_MODEL" "gemini-2.0-flash"
             LLM_PROVIDER_SELECTED="gemini"
-            LLM_MODEL_SELECTED="gemini-2.5-flash"
+            LLM_MODEL_SELECTED="gemini-2.0-flash"
             ;;
         5)
             info "Skipping LLM. Amber will use deterministic heuristics for triage."

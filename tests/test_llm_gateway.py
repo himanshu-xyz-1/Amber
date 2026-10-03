@@ -109,6 +109,54 @@ class TestTrustLevel:
             from backend.app.core.llm import get_model_trust_level
             assert get_model_trust_level() == 3
 
+    def test_llama3_8b_is_level_1_not_level_3(self):
+        """Regression test: llama3.1:8b must be Level 1, not matching 70B Level 3."""
+        with patch("backend.app.core.llm.settings") as mock_settings:
+            mock_settings.LLM_PROVIDER = "local"
+            mock_settings.LOCAL_LLM_MODEL = "llama3.1:8b"
+            from backend.app.core.llm import get_model_trust_level
+            assert get_model_trust_level() == 1
+
+    def test_qwen2_5_7b_is_level_1_not_level_3(self):
+        """Regression test: qwen2.5:7b must be Level 1, not matching 72B Level 3."""
+        with patch("backend.app.core.llm.settings") as mock_settings:
+            mock_settings.LLM_PROVIDER = "local"
+            mock_settings.LOCAL_LLM_MODEL = "qwen2.5:7b"
+            from backend.app.core.llm import get_model_trust_level
+            assert get_model_trust_level() == 1
+
+    def test_qwen2_5_coder_1_5b_is_level_1_not_level_2(self):
+        """Regression test: qwen2.5-coder:1.5b must be Level 1, not matching 14B Level 2."""
+        with patch("backend.app.core.llm.settings") as mock_settings:
+            mock_settings.LLM_PROVIDER = "local"
+            mock_settings.LOCAL_LLM_MODEL = "qwen2.5-coder:1.5b"
+            from backend.app.core.llm import get_model_trust_level
+            assert get_model_trust_level() == 1
+
+    def test_gpt_4o_mini_is_level_1_not_level_3(self):
+        """Regression test: gpt-4o-mini must be Level 1, not matching gpt-4o Level 3."""
+        with patch("backend.app.core.llm.settings") as mock_settings:
+            mock_settings.LLM_PROVIDER = "openai"
+            mock_settings.OPENAI_MODEL = "gpt-4o-mini"
+            from backend.app.core.llm import get_model_trust_level
+            assert get_model_trust_level() == 1
+
+    def test_claude_haiku_is_level_1_not_level_3(self):
+        """Regression test: Claude Haiku is fast/light and must be Level 1."""
+        with patch("backend.app.core.llm.settings") as mock_settings:
+            mock_settings.LLM_PROVIDER = "anthropic"
+            mock_settings.ANTHROPIC_MODEL = "claude-3-5-haiku-20241022"
+            from backend.app.core.llm import get_model_trust_level
+            assert get_model_trust_level() == 1
+
+    def test_gemini_flash_8b_is_level_1(self):
+        """Regression test: Gemini Flash 8B must be Level 1."""
+        with patch("backend.app.core.llm.settings") as mock_settings:
+            mock_settings.LLM_PROVIDER = "gemini"
+            mock_settings.GEMINI_MODEL = "gemini-1.5-flash-8b"
+            from backend.app.core.llm import get_model_trust_level
+            assert get_model_trust_level() == 1
+
 
 # ──────────────────────────────────────────────
 # Air-Gapped Mode Tests
@@ -356,3 +404,61 @@ class TestWebhookFailClosed:
             mock_request = MagicMock()
             result = await require_webhook_auth(request=mock_request)
             assert result is True
+
+
+# ──────────────────────────────────────────────
+# Gemini Header Auth & Ollama Tests
+# ──────────────────────────────────────────────
+
+class TestGeminiAndOllamaProtocols:
+
+    @pytest.mark.asyncio
+    async def test_gemini_passes_key_in_header_not_url(self):
+        """Verify Gemini API key is sent in x-goog-api-key header and never in the URL."""
+        from backend.app.core.llm import LLMGateway
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        with patch("backend.app.core.llm.settings") as mock_settings:
+            mock_settings.LLM_PROVIDER = "gemini"
+            mock_settings.GEMINI_API_KEY = "test-secret-gemini-key"
+            mock_settings.GEMINI_MODEL = "gemini-2.0-flash"
+            mock_settings.AIR_GAPPED = False
+
+            gw = LLMGateway()
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_resp = MagicMock()
+                mock_resp.json.return_value = {
+                    "candidates": [{"content": {"parts": [{"text": '{"severity": "P1"}'}]}}]
+                }
+                mock_resp.raise_for_status = MagicMock()
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=False)
+                mock_client.post = AsyncMock(return_value=mock_resp)
+                mock_client_cls.return_value = mock_client
+
+                await gw.generate_json("test prompt", "system prompt")
+
+                # Verify post call arguments
+                call_args = mock_client.post.call_args
+                url = call_args[0][0]
+                # CRITICAL: API key must NOT be in URL (no ?key=)
+                assert "key=" not in url, "Gemini API key leaked in URL!"
+                assert "test-secret-gemini-key" not in url
+
+                # Verify header contains x-goog-api-key
+                headers = mock_client_cls.call_args.kwargs.get("headers", {})
+                assert headers.get("x-goog-api-key") == "test-secret-gemini-key"
+
+    @pytest.mark.asyncio
+    async def test_air_gapped_dispatcher_suppresses_external_channels(self):
+        """When AIR_GAPPED is True, dispatcher must not call external Slack/Telegram/WhatsApp APIs."""
+        from backend.app.integrations.dispatcher import dispatch_incident_notifications
+        from unittest.mock import patch
+
+        with patch("backend.app.core.config.settings.AIR_GAPPED", True):
+            result = await dispatch_incident_notifications(
+                incident_data={"id": "test-inc-1", "title": "Test outage"}
+            )
+            assert result == {"slack": False, "telegram": False, "whatsapp": False}
+

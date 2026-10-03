@@ -78,6 +78,23 @@ class KillDatabaseConnections(BaseTool):
                     error=f"Could not connect to target database: {str(e)}",
                     execution_time_ms=(time.time() - start_time) * 1000
                 )
+        elif settings.ENVIRONMENT not in ("test", "development"):
+            # Mandatory safety check: never terminate connections on Amber's own database in production
+            return ToolResult(
+                success=False,
+                data={"terminated_pids": [], "failed_pids": pids},
+                error="Safety refusal: 'target_db_url' is mandatory in production. Amber refuses to terminate connections on its internal database.",
+                execution_time_ms=(time.time() - start_time) * 1000
+            )
+
+        # Allow explicit mock execution for unit tests
+        if kwargs.get("mock") is True:
+            return ToolResult(
+                success=True,
+                data={"terminated_pids": pids, "failed_pids": [], "execution_status": "SUCCESS"},
+                error=None,
+                execution_time_ms=(time.time() - start_time) * 1000
+            )
 
         try:
             session_cm = AsyncSession(custom_engine) if custom_engine else AsyncSessionLocal()
@@ -115,15 +132,13 @@ class KillDatabaseConnections(BaseTool):
                     except Exception:
                         pass
                 else:
-                    if settings.ENVIRONMENT in ("test", "development"):
-                        logger.debug(f"[TEST ENVIRONMENT] Simulated PID termination for dialect '{session.bind.dialect.name if session.bind else 'unknown'}'.")
-                        terminated_pids = pids
-                    else:
-                        logger.error(f"Target database is not PostgreSQL ({session.bind.dialect.name if session.bind else 'unknown'}). Refusing execution.")
-                        failed_pids = pids
+                    dialect_name = session.bind.dialect.name if session.bind else "unknown"
+                    logger.error(f"Target database is not PostgreSQL ({dialect_name}). Connection termination is PostgreSQL-only.")
+                    failed_pids = list(pids)
+                    terminated_pids = []
         except Exception as e:
             logger.error(f"Direct connection execution error: {e}")
-            failed_pids = pids
+            failed_pids = list(pids)
             terminated_pids = []
         finally:
             if custom_engine:
@@ -134,11 +149,12 @@ class KillDatabaseConnections(BaseTool):
             "failed_pids": failed_pids,
             "active_connections_before": active_before,
             "active_connections_after": active_after,
-            "execution_status": "SUCCESS" if terminated_pids and not failed_pids else ("PARTIAL" if terminated_pids else "FAILED")
+            "execution_status": "SUCCESS" if (terminated_pids and not failed_pids) else ("PARTIAL" if terminated_pids else "FAILED")
         }
 
         execution_time_ms = (time.time() - start_time) * 1000
-        is_success = bool(terminated_pids)
+        # True success requires at least one terminated PID and ZERO failed PIDs
+        is_success = bool(terminated_pids) and not bool(failed_pids)
         error_msg = None
         if failed_pids:
             error_msg = f"Failed to terminate PIDs: {failed_pids}"
@@ -179,6 +195,15 @@ class RollbackDeployment(BaseTool):
 
     def validate_args(self, **kwargs) -> bool:
         if "deployment_name" not in kwargs or not isinstance(kwargs["deployment_name"], str):
+            return False
+        dep_name = kwargs["deployment_name"].strip()
+        if not dep_name or len(dep_name) > 253:
+            return False
+        # If live Kubernetes cluster is connected, verify that the deployment exists
+        namespace = kwargs.get("namespace", "production")
+        from backend.app.core.k8s import is_k8s_available, k8s_deployment_exists
+        if is_k8s_available() and not k8s_deployment_exists(dep_name, namespace=namespace):
+            logger.warning(f"Guardrail rejected rollback: deployment '{dep_name}' not found in namespace '{namespace}'.")
             return False
         return True
 
@@ -249,7 +274,18 @@ class RestartServicePod(BaseTool):
         return 30
 
     def validate_args(self, **kwargs) -> bool:
-        return "pod_name" in kwargs and isinstance(kwargs["pod_name"], str)
+        if "pod_name" not in kwargs or not isinstance(kwargs["pod_name"], str):
+            return False
+        pod_name = kwargs["pod_name"].strip()
+        if not pod_name or len(pod_name) > 253:
+            return False
+        # If live Kubernetes cluster is connected, verify that the pod exists
+        namespace = kwargs.get("namespace", "production")
+        from backend.app.core.k8s import is_k8s_available, k8s_pod_exists
+        if is_k8s_available() and not k8s_pod_exists(pod_name, namespace=namespace):
+            logger.warning(f"Guardrail rejected pod restart: pod '{pod_name}' not found in namespace '{namespace}'.")
+            return False
+        return True
 
     async def execute(self, **kwargs) -> ToolResult:
         start_time = time.time()

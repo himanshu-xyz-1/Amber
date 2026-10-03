@@ -87,8 +87,9 @@ def test_license_activate_api():
     from backend.app.main import app
 
     client = TestClient(app)
-    # 1. Invalid key fails
-    bad_res = client.post("/api/v1/license/activate", json={"license_key": "bad_key"})
+    headers = {"X-API-Key": "test_amber_api_key_2026"}
+    # 1. Invalid key fails with 400 Bad Request
+    bad_res = client.post("/api/v1/license/activate", json={"license_key": "bad_key"}, headers=headers)
     assert bad_res.status_code == 400
 
     # 2. Valid key succeeds
@@ -98,7 +99,7 @@ def test_license_activate_api():
         days=14,
         key_path=DEFAULT_KEY_PATH
     )
-    good_res = client.post("/api/v1/license/activate", json={"license_key": token})
+    good_res = client.post("/api/v1/license/activate", json={"license_key": token}, headers=headers)
     assert good_res.status_code == 200
     assert good_res.json()["success"] is True
     assert good_res.json()["details"]["org"] == "API Test Corp"

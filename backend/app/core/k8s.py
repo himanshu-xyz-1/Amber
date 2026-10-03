@@ -80,6 +80,40 @@ def is_k8s_available() -> bool:
     return core_api is not None
 
 
+def k8s_deployment_exists(deployment_name: str, namespace: str = "production") -> bool:
+    """Checks if a named Deployment actually exists in the live Kubernetes cluster."""
+    _, apps_api = init_k8s_client()
+    if not apps_api:
+        return True  # If no live cluster attached, defer to schema checks
+    try:
+        apps_api.read_namespaced_deployment(name=deployment_name, namespace=namespace)
+        return True
+    except ApiException as e:
+        if e.status == 404:
+            return False
+        logger.warning(f"Error checking deployment existence for '{deployment_name}': {e}")
+        return True
+    except Exception:
+        return True
+
+
+def k8s_pod_exists(pod_name: str, namespace: str = "production") -> bool:
+    """Checks if a named Pod actually exists in the live Kubernetes cluster."""
+    core_api, _ = init_k8s_client()
+    if not core_api:
+        return True  # If no live cluster attached, defer to schema checks
+    try:
+        core_api.read_namespaced_pod(name=pod_name, namespace=namespace)
+        return True
+    except ApiException as e:
+        if e.status == 404:
+            return False
+        logger.warning(f"Error checking pod existence for '{pod_name}': {e}")
+        return True
+    except Exception:
+        return True
+
+
 async def k8s_restart_pod(pod_name: str, namespace: str = "default") -> Dict[str, Any]:
     """
     Terminates a specific pod, allowing its managing ReplicaSet/Deployment to spin up a healthy replica.

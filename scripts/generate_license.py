@@ -15,7 +15,12 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
-DEFAULT_KEY_PATH = Path(__file__).resolve().parent / "secrets" / "amber_master_private.pem"
+DEFAULT_KEY_PATH = Path(
+    os.environ.get(
+        "AMBER_MASTER_PRIVATE_KEY_PATH",
+        Path.home() / ".amber_secrets" / "amber_master_private.pem"
+    )
+)
 
 TIER_CONFIG = {
     "observe": {
